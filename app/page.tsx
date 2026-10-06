@@ -316,6 +316,9 @@ function CallEnvironment({ active }: { active: boolean }) {
 }
 
 export default function Home() {
+  const [email, setEmail] = useState("");
+  const [allowedEmail, setAllowedEmail] = useState("");
+  const [checkingEmail, setCheckingEmail] = useState(false);
   const [name, setName] = useState("");
   const [room, setRoom] = useState<Room>();
   const [joining, setJoining] = useState(false);
@@ -329,9 +332,27 @@ export default function Home() {
     void current?.disconnect();
   }, []);
 
+  async function checkAccess(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (checkingEmail) return;
+    setCheckingEmail(true);
+    setError("");
+    try {
+      const response = await fetch("/api/livekit/access", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not check access.");
+      setAllowedEmail(email.trim().toLowerCase());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not check access. Try again.");
+    } finally { setCheckingEmail(false); }
+  }
+
   async function join(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending.current || activeRoom.current) return;
+    if (pending.current || activeRoom.current || !allowedEmail) return;
     pending.current = true;
     setJoining(true);
     setError("");
@@ -349,7 +370,7 @@ export default function Home() {
       const response = await fetch("/api/livekit/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, email: allowedEmail }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not get a call token.");
@@ -397,13 +418,23 @@ export default function Home() {
       <p>Room: <strong>games-poc</strong></p>
       {room ? (
         <RoomContext.Provider value={room}><Call room={room} leave={leave} /></RoomContext.Provider>
+      ) : !allowedEmail ? (
+        <form onSubmit={checkAccess} className="space-y-4">
+          <label className="block space-y-2">
+            <span>Email address</span>
+            <input className="block w-full rounded border px-3 py-2" type="email" autoComplete="email" inputMode="email" required maxLength={254} value={email} disabled={checkingEmail} onChange={(event) => setEmail(event.target.value)} />
+          </label>
+          <button type="submit" disabled={checkingEmail || !email.trim()}>{checkingEmail ? "Checking…" : "Continue"}</button>
+        </form>
       ) : (
         <form onSubmit={join} className="space-y-4">
+          <p className="text-sm">Email: {allowedEmail}</p>
           <label className="block space-y-2">
             <span>Participant name</span>
             <input className="block w-full rounded border px-3 py-2" required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} disabled={joining} autoComplete="nickname" />
           </label>
           <button disabled={joining || !name.trim()} type="submit">{joining ? "Joining…" : "Join call"}</button>
+          <button className="ml-3" type="button" disabled={joining} onClick={() => { setAllowedEmail(""); setError(""); }}>Change email</button>
           <p role="status">{joining ? "Requesting microphone access and connecting…" : "Disconnected"}</p>
         </form>
       )}

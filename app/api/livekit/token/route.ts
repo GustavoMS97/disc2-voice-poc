@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { AccessToken, TrackSource } from "livekit-server-sdk";
+import { checkEmailAccess } from "@/app/lib/email-allowlist";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,9 @@ export async function POST(request: Request) {
   } catch {
     return Response.json({ error: "Expected a JSON body." }, { status: 400 });
   }
+  const email = typeof body === "object" && body !== null && "email" in body ? body.email : undefined;
+  const denied = checkEmailAccess(email);
+  if (denied) return Response.json({ error: denied.error }, { status: denied.status, headers: { "Cache-Control": "no-store" } });
   const name = typeof body === "object" && body !== null && "name" in body ? body.name : undefined;
   if (typeof name !== "string" || !name.trim() || name.trim().length > 80) {
     return Response.json({ error: "Enter a participant name between 1 and 80 characters." }, { status: 400 });

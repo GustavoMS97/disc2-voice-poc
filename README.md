@@ -34,16 +34,28 @@ No webcam, chat, authentication, database, or persistence.
    LIVEKIT_URL=wss://your-project.livekit.cloud
    LIVEKIT_API_KEY=your-api-key
    LIVEKIT_API_SECRET=your-api-secret
+   ALLOWED_EMAILS=email1@gmail.com,email2@gmail.com
    ```
 
 3. Install dependencies with `npm ci` if needed, then run `npm run dev`.
 4. Restart the dev server after changing environment variables.
 
-`POST /api/livekit/token` accepts JSON `{ "name": "Alice" }`. It trims and validates
+The first form checks the email against the server-only `ALLOWED_EMAILS` list.
+Matching ignores surrounding whitespace and letter case; only exact addresses
+are allowed. An unset/empty list blocks all joins. Add this variable to Vercel's
+Production/Preview environment and redeploy; restart local dev after changing it.
+The actual `.env.local` is not changed by this implementation.
+
+This is a simple admission gate, **not email ownership verification**: anyone who
+knows an allowed email can enter it. The allowlist is never returned to the browser.
+No email is added to LiveKit participant names/metadata or persisted by the app.
+
+`POST /api/livekit/token` accepts JSON `{ "name": "Alice", "email": "email1@gmail.com" }`. It rechecks email access on every token request, then trims and validates
 names (1–80 characters), assigns a unique identity for each join, and issues a
 10-minute token scoped to `games-poc`, subscription, and microphone/screen-video/screen-audio publishing only.
-The API secret stays on the server. The endpoint is intentionally unauthenticated
-for this POC. No room creation step is needed: LiveKit creates it on first join.
+The API secret stays on the server. No room creation step is needed: LiveKit creates
+it on first join. Removing an email blocks new tokens after configuration is
+deployed; it does not disconnect existing participants or revoke already issued tokens.
 
 ## Test in two browsers on one computer
 
@@ -329,6 +341,7 @@ npx tsc --noEmit
 node scripts/check-screen-discovery.mjs
 node scripts/check-call-environment.mjs
 node scripts/check-call-diagnostics.mjs
+node scripts/check-email-access.mjs
 npm run build
 ```
 

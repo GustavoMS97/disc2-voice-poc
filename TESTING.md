@@ -9,6 +9,8 @@ This is a manual validation plan, not measured performance results.
   LiveKit project (`games-poc`); reload everyone onto the same version.
 - Choose one Windows + Chrome game sharer and one note taker. Run Valorant in a
   practice session, preferably windowed/borderless. Close other audio sources.
+- Configure each tester's email in server-side `ALLOWED_EMAILS`, redeploy, and
+  enter an allowed email before joining. This gate does not verify email ownership.
 - Record start time, deployment/version, device/browser versions, and networks.
   Note LiveKit Cloud project usage totals/time range before starting. Avoid other
   sessions on that project while comparing usage; dashboard totals may update later.
