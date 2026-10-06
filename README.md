@@ -1,5 +1,10 @@
 # LiveKit voice POC
 
+For the final 3–5-person game-sharing validation, follow [TESTING.md](./TESTING.md).
+The removable **Call diagnostics** panel is read-only, event-driven, and keeps only
+the last five reconnect events in browser memory. It does not measure latency or
+collect/store telemetry.
+
 Minimal Next.js App Router voice call using LiveKit Cloud. Everyone joins the fixed
 room `games-poc`. Includes names, participant list, microphone mute/unmute, leave,
 connection/error states, and an explicit playback-resume button.
@@ -323,6 +328,7 @@ npm run lint
 npx tsc --noEmit
 node scripts/check-screen-discovery.mjs
 node scripts/check-call-environment.mjs
+node scripts/check-call-diagnostics.mjs
 npm run build
 ```
 

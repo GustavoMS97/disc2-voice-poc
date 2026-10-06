@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AudioTrack, VideoTrack, RoomContext, useConnectionState, useIsSpeaking, useLocalParticipant, useParticipants, useTracks, type TrackReference } from "@livekit/components-react";
 import { enterVideoFullscreen, observeCallEnvironment, type CallEnvironmentStatus } from "./lib/call-environment";
+import CallDiagnostics from "./call-diagnostics";
 import { ConnectionState, ParticipantEvent, RemoteTrackPublication, Room, RoomEvent, ScreenSharePresets, Track, createLocalAudioTrack, type LocalAudioTrack, type LocalTrackPublication, type Participant } from "livekit-client";
 
 function subscribeMicrophones(room: Room) {
@@ -408,6 +409,7 @@ export default function Home() {
       )}
       {error && <p role="alert" className="text-red-600">{error}</p>}
       <CallEnvironment active={Boolean(room)} />
+      <CallDiagnostics room={room} />
     </main>
   );
 }
