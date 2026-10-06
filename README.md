@@ -12,7 +12,10 @@ and automatically displays each shared screen with its participant's name.
 Screen sharing requests optional browser audio and publishes it as a separate
 `ScreenShareAudio` track. Participant rows show microphone, screen video, and
 screen audio publication status with their track SIDs. Microphone sliders affect
-only microphone playback; screen audio plays independently at its default volume.
+only microphone playback. A separate screen-audio slider (0–100%, default 100%)
+appears for each remote participant with a subscribed screen-audio track and affects
+only that track. It disappears when the track is removed and resets for a new share.
+Volume preferences are not persisted.
 No webcam, chat, authentication, database, or persistence.
 
 ## Setup
@@ -183,6 +186,29 @@ publication; sharing again creates new screen publication SIDs.
 
 Browser references: [Chrome capture controls](https://developer.chrome.com/docs/web-platform/screen-sharing-controls)
 and [getDisplayMedia audio limitations](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia).
+
+## Validate independent microphone and screen-audio volume
+
+1. Deploy this version and join the same HTTPS URL from two Windows + Chrome
+   computers as Alice and Bob, with headphones. Keep Bob's microphone muted
+   during system capture to avoid recapturing his voice.
+2. Alice starts YouTube or a game and shares with tab/system audio enabled.
+   On Bob's page, Alice's row should show separate **Microphone volume** and
+   **Screen audio volume** sliders, both initially 100%.
+3. Alice unmutes her microphone and speaks while the media plays. On Bob's page,
+   move **Microphone volume** to 0%: voice should disappear, shared media should
+   continue, and the screen slider should stay at 100%. Restore microphone to 80%.
+4. Move **Screen audio volume** to 0%: media should disappear, Alice's voice should
+   continue, the microphone slider should stay at 80%, and video should continue.
+   Set screen audio to 40% and compare with 100%; only media loudness should change.
+5. Alice mutes her microphone, matching the earlier validated YouTube scenario.
+   Bob should still hear media and be able to adjust it with the screen slider.
+6. Stop sharing using either the app or Chrome's native control. The screen slider
+   and video should disappear while microphone volume remains at 80%. Start a
+   new share with audio: screen volume should default to 100% again.
+7. Share without audio: no screen-audio slider should appear. Local participant
+   rows should never show either remote playback slider. Recheck mute/unmute,
+   speaking indicators, and leaving the call.
 
 ## Checks
 

@@ -4,6 +4,29 @@ import { useEffect, useRef, useState } from "react";
 import { AudioTrack, VideoTrack, RoomContext, StartAudio, useConnectionState, useIsSpeaking, useLocalParticipant, useParticipants, useTracks, type TrackReference } from "@livekit/components-react";
 import { ConnectionState, ParticipantEvent, Room, RoomEvent, ScreenSharePresets, Track, createLocalAudioTrack, type LocalAudioTrack, type LocalTrackPublication, type Participant } from "livekit-client";
 
+function ScreenAudioControl({ trackRef }: { trackRef: TrackReference }) {
+  const [volume, setVolume] = useState(100);
+
+  return (
+    <>
+      <label className="flex flex-wrap items-center gap-3">
+        <span>Screen audio volume: {volume}%</span>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={1}
+          value={volume}
+          aria-label={`Screen audio volume for ${trackRef.participant.name || trackRef.participant.identity}`}
+          aria-valuetext={`${volume}%`}
+          onChange={(event) => setVolume(Number(event.target.value))}
+        />
+      </label>
+      <AudioTrack trackRef={trackRef} volume={volume / 100} />
+    </>
+  );
+}
+
 function ParticipantRow({ participant, microphoneTracks, shareTracks }: {
   participant: Participant;
   microphoneTracks: TrackReference[];
@@ -45,6 +68,9 @@ function ParticipantRow({ participant, microphoneTracks, shareTracks }: {
           {microphoneTracks.filter((ref) => ref.publication.isSubscribed).map((trackRef) => (
             <AudioTrack key={trackRef.publication.trackSid} trackRef={trackRef} volume={volume / 100} />
           ))}
+          {screenAudio?.publication.isSubscribed && (
+            <ScreenAudioControl key={screenAudio.publication.trackSid} trackRef={screenAudio} />
+          )}
         </>
       )}
     </li>
@@ -183,9 +209,6 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
           </figure>
         ))}
       </section>
-      {shareTracks.filter((ref) => !ref.participant.isLocal && ref.source === Track.Source.ScreenShareAudio && ref.publication.isSubscribed).map((trackRef) => (
-        <AudioTrack key={trackRef.publication.trackSid} trackRef={trackRef} />
-      ))}
       <StartAudio label="Enable call audio" />
     </section>
   );
