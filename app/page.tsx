@@ -2,7 +2,67 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AudioTrack, VideoTrack, RoomContext, StartAudio, useConnectionState, useIsSpeaking, useLocalParticipant, useParticipants, useTracks, type TrackReference } from "@livekit/components-react";
-import { ConnectionState, ParticipantEvent, Room, RoomEvent, ScreenSharePresets, Track, createLocalAudioTrack, type LocalAudioTrack, type LocalTrackPublication, type Participant } from "livekit-client";
+import { ConnectionState, ParticipantEvent, RemoteTrackPublication, Room, RoomEvent, ScreenSharePresets, Track, createLocalAudioTrack, type LocalAudioTrack, type LocalTrackPublication, type Participant } from "livekit-client";
+
+function subscribeMicrophones(room: Room) {
+  function subscribe(publication: RemoteTrackPublication) {
+    if (publication.source === Track.Source.Microphone) publication.setSubscribed(true);
+  }
+  function subscribeExisting() {
+    room.remoteParticipants.forEach((participant) => participant.trackPublications.forEach(subscribe));
+  }
+  room.on(RoomEvent.TrackPublished, subscribe);
+  room.on(RoomEvent.ParticipantConnected, subscribeExisting);
+  room.on(RoomEvent.Reconnected, subscribeExisting);
+  room.on(RoomEvent.Connected, subscribeExisting);
+  return subscribeExisting;
+}
+
+function RemoteScreenShare({ video, audio, connected }: {
+  video: TrackReference;
+  audio?: TrackReference;
+  connected: boolean;
+}) {
+  const [watching, setWatching] = useState(false);
+  const videoPublication = video.publication;
+  const audioPublication = audio?.publication;
+
+  useEffect(() => {
+    if (!(videoPublication instanceof RemoteTrackPublication)) return;
+    videoPublication.setSubscribed(watching);
+    return () => videoPublication.setSubscribed(false);
+  }, [videoPublication, watching]);
+
+  // Audio may be published after video; apply the current viewing choice to it too.
+  useEffect(() => {
+    if (!(audioPublication instanceof RemoteTrackPublication)) return;
+    audioPublication.setSubscribed(watching);
+    return () => audioPublication.setSubscribed(false);
+  }, [audioPublication, watching]);
+
+  return (
+    <figure className="space-y-2">
+      <figcaption><strong>{video.participant.name || video.participant.identity}</strong> is sharing their screen</figcaption>
+      <button disabled={!connected} onClick={() => setWatching(!watching)}>
+        {watching ? "Stop watching" : "Watch"}
+      </button>
+      <p className="text-sm" role="status">
+        {watching ? "Watching" : "Not watching"} · Video: {videoPublication.isSubscribed ? "subscribed" : "not subscribed"}
+        {audioPublication ? ` · Screen audio: ${audioPublication.isSubscribed ? "subscribed" : "not subscribed"}` : " · No screen audio available"}
+      </p>
+      {watching && (
+        <>
+          {videoPublication.isSubscribed ? (
+            <VideoTrack trackRef={video} manageSubscription={false} className="aspect-video w-full rounded bg-black object-contain" muted playsInline />
+          ) : <p>Waiting for screen video subscription…</p>}
+          {audio && audioPublication?.isSubscribed && (
+            <ScreenAudioControl key={audioPublication.trackSid} trackRef={audio} />
+          )}
+        </>
+      )}
+    </figure>
+  );
+}
 
 function ScreenAudioControl({ trackRef }: { trackRef: TrackReference }) {
   const [volume, setVolume] = useState(100);
@@ -68,9 +128,6 @@ function ParticipantRow({ participant, microphoneTracks, shareTracks }: {
           {microphoneTracks.filter((ref) => ref.publication.isSubscribed).map((trackRef) => (
             <AudioTrack key={trackRef.publication.trackSid} trackRef={trackRef} volume={volume / 100} />
           ))}
-          {screenAudio?.publication.isSubscribed && (
-            <ScreenAudioControl key={screenAudio.publication.trackSid} trackRef={screenAudio} />
-          )}
         </>
       )}
     </li>
@@ -195,7 +252,7 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
         <h2 className="text-lg font-semibold">Shared screens</h2>
         {screenTracks.length === 0 && <p>No one is sharing a screen.</p>}
         {screenTracks.map((trackRef) => (
-          <figure key={trackRef.publication.trackSid} className="space-y-2">
+          trackRef.participant.isLocal ? <figure key={trackRef.publication.trackSid} className="space-y-2">
             <figcaption>
               <strong>{trackRef.participant.name || trackRef.participant.identity}</strong>
               {trackRef.participant.isLocal ? " (you)" : ""} is sharing
@@ -206,7 +263,12 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
               muted
               playsInline
             />
-          </figure>
+          </figure> : <RemoteScreenShare
+            key={trackRef.publication.trackSid}
+            video={trackRef}
+            audio={shareTracks.find((ref) => ref.participant.identity === trackRef.participant.identity && ref.source === Track.Source.ScreenShareAudio)}
+            connected={connection === ConnectionState.Connected}
+          />
         ))}
       </section>
       <StartAudio label="Enable call audio" />
@@ -235,6 +297,8 @@ export default function Home() {
     setJoining(true);
     setError("");
     const nextRoom = new Room();
+    // Install before connecting so future publications and existing microphones are covered.
+    const subscribeExistingMicrophones = subscribeMicrophones(nextRoom);
     let microphone: LocalAudioTrack | undefined;
     activeRoom.current = nextRoom;
     try {
@@ -258,7 +322,9 @@ export default function Home() {
           setError("The call disconnected. You can join again.");
         }
       });
-      await nextRoom.connect(data.serverUrl, data.token);
+      await nextRoom.connect(data.serverUrl, data.token, { autoSubscribe: false });
+      // Cover publications included in the initial join response as well as event notifications.
+      subscribeExistingMicrophones();
       if (activeRoom.current !== nextRoom) { microphone.stop(); await nextRoom.disconnect(); return; }
       await nextRoom.localParticipant.publishTrack(microphone, { source: Track.Source.Microphone });
       if (activeRoom.current !== nextRoom) { microphone.stop(); await nextRoom.disconnect(); return; }

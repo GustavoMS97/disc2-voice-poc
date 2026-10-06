@@ -8,7 +8,9 @@ volume sliders (0–100%, default 100%). Volume affects only the current listene
 is kept while the participant remains in the call, including microphone mute/unmute
 and track replacement. It resets when that participant leaves or you leave the call.
 Basic screen sharing uses the browser's native picker, targets 1280×720 at 30 FPS,
-and automatically displays each shared screen with its participant's name.
+and lists available shared screens with each participant's name. Remote video/audio
+are only subscribed and rendered after **Watch**. **Stop watching** unsubscribes
+both screen sources without leaving the voice call. Local preview remains automatic.
 Screen sharing requests optional browser audio and publishes it as a separate
 `ScreenShareAudio` track. Participant rows show microphone, screen video, and
 screen audio publication status with their track SIDs. Microphone sliders affect
@@ -99,7 +101,7 @@ should never be requested. Both computers need internet access to LiveKit Cloud.
 3. On Alice's computer, click **Share screen**. In Chrome's native picker choose
    a tab, window, or entire screen, then click **Share**. Choosing a different tab
    or a window such as Notepad avoids a recursive preview of the call page.
-4. Confirm both computers show **Alice is sharing** and the screen video. Type or
+4. Bob clicks **Watch**. Confirm both computers show **Alice is sharing** and the screen video. Type or
    scroll in the shared source and confirm Bob sees the updates. Alice should now
    have a **Stop sharing** button. No webcam permission should be requested.
 5. Continue speaking, mute/unmute, and change microphone volume while sharing.
@@ -134,9 +136,12 @@ actual resolution and delivered frame rate.
   when video ends during concurrent publication of the two screen tracks.
 - A new sharing session has a new track SID. Videos are keyed by publication SID,
   and sharer names come from the participant associated with each track reference.
-- Remote tracks are currently automatically subscribed. A future **Watch** flow
-  will need to list publications independently of subscription and explicitly
-  control subscription/rendering.
+- Room connection uses `autoSubscribe: false`. Microphones are explicitly subscribed
+  for existing/new participants and after reconnect. Screen publications remain
+  visible as metadata without a media subscription; **Watch** subscribes video and
+  optional audio per track, including audio published after viewing begins.
+- Viewing state is keyed by screen-video SID. Removing that publication unmounts
+  the viewer and unsubscribes associated audio; a new share requires another click.
 
 ## Validate screen/system audio on two Windows + Chrome computers
 
@@ -145,7 +150,7 @@ actual resolution and delivered frame rate.
    `screen_share_audio`. Use headphones on both computers.
 2. First test **Chrome Tab**: play a video or music in another tab on Alice's
    computer, click **Share screen**, choose that tab, enable **Share tab audio**
-   (wording may vary), and share. Bob should see the video and hear its audio.
+   (wording may vary), and share. Bob clicks **Watch** to see video and hear audio.
    Click **Enable call audio** on Bob if it appears.
 3. In Alice's row on Bob's computer, confirm **Microphone audio**, **Screen-share
    video**, and **Screen-share audio** are published with three different SIDs.
@@ -193,8 +198,9 @@ and [getDisplayMedia audio limitations](https://developer.mozilla.org/en-US/docs
    computers as Alice and Bob, with headphones. Keep Bob's microphone muted
    during system capture to avoid recapturing his voice.
 2. Alice starts YouTube or a game and shares with tab/system audio enabled.
-   On Bob's page, Alice's row should show separate **Microphone volume** and
-   **Screen audio volume** sliders, both initially 100%.
+   On Bob's page, click **Watch** for Alice's share. Her participant row has
+   **Microphone volume** and the screen viewer has **Screen audio volume**,
+   both initially 100%.
 3. Alice unmutes her microphone and speaks while the media plays. On Bob's page,
    move **Microphone volume** to 0%: voice should disappear, shared media should
    continue, and the screen slider should stay at 100%. Restore microphone to 80%.
@@ -209,6 +215,43 @@ and [getDisplayMedia audio limitations](https://developer.mozilla.org/en-US/docs
 7. Share without audio: no screen-audio slider should appear. Local participant
    rows should never show either remote playback slider. Recheck mute/unmute,
    speaking indicators, and leaving the call.
+
+## Validate selective screen-share subscription
+
+1. Deploy this version and reload/rejoin both Windows + Chrome computers as
+   Alice and Bob. Use headphones. Keep a conversation going throughout the test.
+2. Alice shares a tab playing media with tab audio enabled. Bob should see
+   **Alice is sharing their screen**, **Watch**, and **not subscribed** for both
+   screen video and audio. No remote screen video or screen audio should play.
+   Alice's microphone should still be audible and its volume slider should work.
+3. On Bob's Chrome, open `chrome://webrtc-internals` before joining. Inspect the
+   receiving peer connection's inbound RTP stats while Alice shares. Before
+   Watch there should be no active inbound screen-video/audio media receiving
+   bytes. Microphone audio can receive bytes normally. Aggregate connection traffic
+   alone is insufficient because signaling, microphone media, and RTCP still flow.
+4. Click **Watch**. Both screen subscription statuses should become **subscribed**;
+   video, media audio, and screen-audio volume should appear. The inbound video
+   and second audio RTP streams should now have increasing `bytesReceived`.
+   Screen track SIDs are shown in Alice's participant row; SID values may differ
+   from browser RTP identifiers, so compare stats before/after as well.
+5. Adjust microphone and screen-audio volumes independently while Alice talks and
+   plays media. Click **Stop watching**: video and screen-audio controls disappear,
+   screen media stops, and screen subscriptions become **not subscribed**. After
+   a short signaling delay their RTP byte counters stop increasing (or stats
+   entries disappear). Microphone remains audible; connection stays `connected`,
+   names remain listed, and mute/unmute continues to work. Watch again to resume.
+6. Stop Alice's share while Bob watches. The viewer should disappear. Start a new
+   share: Bob must click **Watch** again. Repeat using Chrome's native Stop sharing.
+7. Share without audio: Bob can still watch video; UI shows no screen audio and
+   no screen-audio slider. Join Bob after Alice is already sharing: microphone
+   should work immediately, but screen tracks must still wait for **Watch**.
+8. Optionally add Charlie: Bob watching must not subscribe Charlie. Each listener
+   chooses independently. Temporarily interrupt networking and restore it to
+   verify microphone recovery and that unwatched shares remain unsubscribed.
+
+Subscription-status text reports SDK track attachment, not a packet capture.
+Use per-stream RTP stats for network verification. Screen-audio volume resets
+to 100% after Stop watching/Watch; microphone volume remains unchanged.
 
 ## Checks
 
