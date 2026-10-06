@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     });
     token.addGrant({
       roomJoin: true, room: "games-poc", canSubscribe: true,
-      canPublish: true, canPublishSources: [TrackSource.MICROPHONE, TrackSource.SCREEN_SHARE], canPublishData: false,
+      canPublish: true, canPublishSources: [TrackSource.MICROPHONE, TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO], canPublishData: false,
     });
     return Response.json({ serverUrl, token: await token.toJwt() }, {
       headers: { "Cache-Control": "no-store" },

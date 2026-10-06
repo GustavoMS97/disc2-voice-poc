@@ -2,14 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AudioTrack, VideoTrack, RoomContext, StartAudio, useConnectionState, useIsSpeaking, useLocalParticipant, useParticipants, useTracks, type TrackReference } from "@livekit/components-react";
-import { ConnectionState, Room, RoomEvent, ScreenSharePresets, Track, createLocalAudioTrack, type LocalAudioTrack, type Participant } from "livekit-client";
+import { ConnectionState, ParticipantEvent, Room, RoomEvent, ScreenSharePresets, Track, createLocalAudioTrack, type LocalAudioTrack, type LocalTrackPublication, type Participant } from "livekit-client";
 
-function ParticipantRow({ participant, microphoneTracks }: {
+function ParticipantRow({ participant, microphoneTracks, shareTracks }: {
   participant: Participant;
   microphoneTracks: TrackReference[];
+  shareTracks: TrackReference[];
 }) {
   const isSpeaking = useIsSpeaking(participant);
   const [volume, setVolume] = useState(100);
+  const screenVideo = shareTracks.find((ref) => ref.source === Track.Source.ScreenShare);
+  const screenAudio = shareTracks.find((ref) => ref.source === Track.Source.ScreenShareAudio);
 
   return (
     <li className="space-y-2 rounded border p-3">
@@ -19,6 +22,11 @@ function ParticipantRow({ participant, microphoneTracks }: {
           {isSpeaking ? "Speaking" : "Not speaking"}
         </span>
       </div>
+      <ul className="space-y-1 break-all text-sm">
+        <li>Microphone audio: {microphoneTracks.length ? microphoneTracks.map((ref) => `${ref.publication.isMuted ? "Muted" : "Published"} (${ref.publication.trackSid})`).join(", ") : "Not published"}</li>
+        <li>Screen-share video: {screenVideo ? `Published (${screenVideo.publication.trackSid})` : "Not published"}</li>
+        <li>Screen-share audio: {screenAudio ? `${screenAudio.publication.isMuted ? "Muted" : "Published"} (${screenAudio.publication.trackSid})` : screenVideo ? "No audio track provided by the browser" : "Not published"}</li>
+      </ul>
       {!participant.isLocal && (
         <>
           <label className="flex flex-wrap items-center gap-3">
@@ -34,7 +42,7 @@ function ParticipantRow({ participant, microphoneTracks }: {
               onChange={(event) => setVolume(Number(event.target.value))}
             />
           </label>
-          {microphoneTracks.map((trackRef) => (
+          {microphoneTracks.filter((ref) => ref.publication.isSubscribed).map((trackRef) => (
             <AudioTrack key={trackRef.publication.trackSid} trackRef={trackRef} volume={volume / 100} />
           ))}
         </>
@@ -46,14 +54,37 @@ function ParticipantRow({ participant, microphoneTracks }: {
 function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
   const connection = useConnectionState();
   const participants = useParticipants();
-  const microphoneTracks = useTracks([Track.Source.Microphone], { onlySubscribed: true });
-  const screenTracks = useTracks([Track.Source.ScreenShare]);
+  const microphoneTracks = useTracks([Track.Source.Microphone]);
+  const shareTracks = useTracks([Track.Source.ScreenShare, Track.Source.ScreenShareAudio]);
+  const screenTracks = shareTracks.filter((ref) => ref.source === Track.Source.ScreenShare);
   const { isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [screenBusy, setScreenBusy] = useState(false);
   const [screenMessage, setScreenMessage] = useState("");
   const screenPending = useRef(false);
+
+  useEffect(() => {
+    const local = room.localParticipant;
+    // Native Stop sharing may end video before audio. Never leave orphan share audio.
+    function stopOrphanAudio() {
+      if (local.getTrackPublication(Track.Source.ScreenShare)) return;
+      const audio = local.getTrackPublication(Track.Source.ScreenShareAudio)?.track;
+      if (audio) {
+        audio.stop();
+        void local.unpublishTrack(audio).catch(() => {
+          setScreenMessage("Could not remove screen-share audio. Leave the call to finish cleanup.");
+        });
+      }
+    }
+    function onUnpublished(publication: LocalTrackPublication) {
+      if (publication.source === Track.Source.ScreenShare) stopOrphanAudio();
+    }
+    local.on(ParticipantEvent.LocalTrackUnpublished, onUnpublished);
+    return () => {
+      local.off(ParticipantEvent.LocalTrackUnpublished, onUnpublished);
+    };
+  }, [room]);
 
   async function toggleScreenShare() {
     if (screenPending.current || room.state !== ConnectionState.Connected) return;
@@ -67,12 +98,17 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
         return;
       }
       await room.localParticipant.setScreenShareEnabled(starting, {
-        audio: false,
-        systemAudio: "exclude",
+        audio: true,
+        systemAudio: "include",
         resolution: ScreenSharePresets.h720fps30.resolution,
       }, {
         screenShareEncoding: ScreenSharePresets.h720fps30.encoding,
       });
+      // Video and audio publish concurrently; the browser can end video mid-publication.
+      if (!room.localParticipant.getTrackPublication(Track.Source.ScreenShare)) {
+        const audio = room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio)?.track;
+        if (audio) await room.localParticipant.unpublishTrack(audio);
+      }
       // A picker may finish after the user has left the call.
       if (room.state !== ConnectionState.Connected) {
         await room.localParticipant.setScreenShareEnabled(false);
@@ -112,6 +148,7 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
             key={participant.identity}
             participant={participant}
             microphoneTracks={microphoneTracks.filter((trackRef) => trackRef.participant.identity === participant.identity)}
+            shareTracks={shareTracks.filter((trackRef) => trackRef.participant.identity === participant.identity)}
           />
         ))}
       </ul>
@@ -125,6 +162,7 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
         </button>
         <button onClick={() => void leave()}>Leave call</button>
       </div>
+      <p className="text-sm opacity-70">To share audio, enable the audio checkbox in Chrome&apos;s screen picker when available.</p>
       {screenMessage && <p role="status">{screenMessage}</p>}
       {error && <p role="alert" className="text-red-600">{error}</p>}
       <section className="space-y-3" aria-label="Shared screens">
@@ -145,6 +183,9 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
           </figure>
         ))}
       </section>
+      {shareTracks.filter((ref) => !ref.participant.isLocal && ref.source === Track.Source.ScreenShareAudio && ref.publication.isSubscribed).map((trackRef) => (
+        <AudioTrack key={trackRef.publication.trackSid} trackRef={trackRef} />
+      ))}
       <StartAudio label="Enable call audio" />
     </section>
   );

@@ -9,7 +9,11 @@ is kept while the participant remains in the call, including microphone mute/unm
 and track replacement. It resets when that participant leaves or you leave the call.
 Basic screen sharing uses the browser's native picker, targets 1280×720 at 30 FPS,
 and automatically displays each shared screen with its participant's name.
-No webcam, screen/system audio, chat, authentication, database, or persistence.
+Screen sharing requests optional browser audio and publishes it as a separate
+`ScreenShareAudio` track. Participant rows show microphone, screen video, and
+screen audio publication status with their track SIDs. Microphone sliders affect
+only microphone playback; screen audio plays independently at its default volume.
+No webcam, chat, authentication, database, or persistence.
 
 ## Setup
 
@@ -27,7 +31,7 @@ No webcam, screen/system audio, chat, authentication, database, or persistence.
 
 `POST /api/livekit/token` accepts JSON `{ "name": "Alice" }`. It trims and validates
 names (1–80 characters), assigns a unique identity for each join, and issues a
-10-minute token scoped to `games-poc`, subscription, and microphone/screen-video publishing only.
+10-minute token scoped to `games-poc`, subscription, and microphone/screen-video/screen-audio publishing only.
 The API secret stays on the server. The endpoint is intentionally unauthenticated
 for this POC. No room creation step is needed: LiveKit creates it on first join.
 
@@ -97,7 +101,7 @@ should never be requested. Both computers need internet access to LiveKit Cloud.
    have a **Stop sharing** button. No webcam permission should be requested.
 5. Continue speaking, mute/unmute, and change microphone volume while sharing.
    Voice, speaking indicators, and volume controls should continue working.
-   Screen/system audio is not captured or published.
+   Screen/system audio is optional; see the audio validation steps below.
 6. Click the app's **Stop sharing** on Alice. The video should disappear on both
    computers and the button should return to **Share screen**.
 7. Start another share, then use Chrome's native **Stop sharing** control. Verify
@@ -117,17 +121,68 @@ actual resolution and delivered frame rate.
 ### Track handling notes for the next step
 
 - Screen video has source `ScreenShare`, separate from `Microphone`. Screen audio
-  would be a separate `ScreenShareAudio` publication; it is disabled in capture
-  and excluded from token permissions here.
+  is a separate `ScreenShareAudio` publication when the browser supplies audio.
 - The SDK's `setScreenShareEnabled(false)` unpublishes and stops the screen track;
   unlike microphone mute, it does not retain a muted screen publication.
 - The SDK also unpublishes screen tracks when the browser's capture track ends.
   LiveKit React hooks update the button and video list from publication events.
+  The installed SDK handles ended tracks individually. The app additionally stops
+  and unpublishes associated screen audio when screen video is unpublished, including
+  when video ends during concurrent publication of the two screen tracks.
 - A new sharing session has a new track SID. Videos are keyed by publication SID,
   and sharer names come from the participant associated with each track reference.
 - Remote tracks are currently automatically subscribed. A future **Watch** flow
   will need to list publications independently of subscription and explicitly
   control subscription/rendering.
+
+## Validate screen/system audio on two Windows + Chrome computers
+
+1. Deploy this version and open the same HTTPS URL in current desktop Chrome on
+   both Windows computers. Leave/rejoin as Alice and Bob to get tokens permitting
+   `screen_share_audio`. Use headphones on both computers.
+2. First test **Chrome Tab**: play a video or music in another tab on Alice's
+   computer, click **Share screen**, choose that tab, enable **Share tab audio**
+   (wording may vary), and share. Bob should see the video and hear its audio.
+   Click **Enable call audio** on Bob if it appears.
+3. In Alice's row on Bob's computer, confirm **Microphone audio**, **Screen-share
+   video**, and **Screen-share audio** are published with three different SIDs.
+   Status indicates publication/mute state, not that the source is producing sound.
+4. Have Alice talk while the shared tab plays. On Bob's computer, set Alice's
+   microphone slider to 0%: Alice's voice should disappear but tab audio should
+   continue. Restore the slider. Alice then mutes her microphone: share audio
+   must still continue, and only the microphone status should say **Muted**.
+5. Stop sharing. Screen video and screen audio must disappear from the UI and
+   playback must stop, while microphone audio remains available. Repeat using
+   Chrome's native **Stop sharing**, then share again to verify recovery.
+6. **Game/application system-audio test:** on Alice's Windows computer, run a game
+   in windowed/borderless mode or play audio in a desktop media application. Share
+   **Entire Screen**, selecting the display with that application, and enable
+   **Share system audio** / **Also share system audio** if Chrome offers it. Keep
+   Alice's microphone muted and confirm Bob sees the game/application and hears
+   its audio. This isolates the captured system audio from microphone pickup.
+7. Repeat with the game's **Window** if desired. Audio options differ with browser
+   version and platform; use Entire Screen as the baseline for system audio.
+   Requesting audio does not force Chrome to return an audio track.
+8. Share with the picker audio checkbox disabled (or a surface without audio
+   support). Video must still work. The participant row should show **No audio
+   track provided by the browser** instead of treating the share as a failure.
+9. Cancel the picker, leave while sharing, and rejoin. Confirm cancellation keeps
+   the voice call connected, leaving removes both share tracks, and microphone
+   controls and speaking indicators still work.
+
+System capture can include the call's own received audio as well as other
+applications. For the game validation, keep Bob's microphone muted while Alice
+shares to avoid recapturing Bob's voice. This POC does not filter or mix sources.
+No local screen-audio playback element is created, avoiding direct self-monitoring.
+
+To confirm separation, compare the different track SIDs shown in the participant
+row and run the microphone-slider/mute tests above. You can also inspect the
+participant's publications in the LiveKit Cloud room view: sources should be
+`microphone`, `screen_share`, and `screen_share_audio`. A SID identifies a LiveKit
+publication; sharing again creates new screen publication SIDs.
+
+Browser references: [Chrome capture controls](https://developer.chrome.com/docs/web-platform/screen-sharing-controls)
+and [getDisplayMedia audio limitations](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia).
 
 ## Checks
 
