@@ -1,3 +1,26 @@
+# Project
+
+Technical POC for validating LiveKit voice and screen sharing.
+
+This repository is disposable and is not the production application.
+
+## Principles
+
+- Keep implementation minimal.
+- Do not introduce production architecture unless explicitly requested.
+- Prefer direct, readable TypeScript.
+- Avoid `any`.
+- Avoid unnecessary abstractions.
+- Do not add NestJS, databases or authentication unless explicitly requested.
+- Never expose LiveKit API secrets to client-side code.
+- Run lint/checks after changes.
+
+## Git
+
+- Never create commits.
+- The agent may stage changes if useful.
+- Always propose a conventional commit message after completing a task.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
