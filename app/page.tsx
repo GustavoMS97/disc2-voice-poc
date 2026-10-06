@@ -137,8 +137,9 @@ function ParticipantRow({ participant, microphoneTracks, shareTracks }: {
 function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
   const connection = useConnectionState();
   const participants = useParticipants();
-  const microphoneTracks = useTracks([Track.Source.Microphone]);
-  const shareTracks = useTracks([Track.Source.ScreenShare, Track.Source.ScreenShareAudio]);
+  const microphoneTracks = useTracks([Track.Source.Microphone], { onlySubscribed: false });
+  // Availability must include publications with no media subscription yet.
+  const shareTracks = useTracks([Track.Source.ScreenShare, Track.Source.ScreenShareAudio], { onlySubscribed: false });
   const screenTracks = shareTracks.filter((ref) => ref.source === Track.Source.ScreenShare);
   const { isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant();
   const [error, setError] = useState("");

@@ -258,6 +258,7 @@ to 100% after Stop watching/Watch; microphone volume remains unchanged.
 ```bash
 npm run lint
 npx tsc --noEmit
+node scripts/check-screen-discovery.mjs
 npm run build
 ```
 
