@@ -1,12 +1,52 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { RoomContext, RoomAudioRenderer, StartAudio, useConnectionState, useLocalParticipant, useParticipants } from "@livekit/components-react";
-import { ConnectionState, Room, RoomEvent, Track, createLocalAudioTrack, type LocalAudioTrack } from "livekit-client";
+import { AudioTrack, RoomContext, StartAudio, useConnectionState, useIsSpeaking, useLocalParticipant, useParticipants, useTracks, type TrackReference } from "@livekit/components-react";
+import { ConnectionState, Room, RoomEvent, Track, createLocalAudioTrack, type LocalAudioTrack, type Participant } from "livekit-client";
+
+function ParticipantRow({ participant, microphoneTracks }: {
+  participant: Participant;
+  microphoneTracks: TrackReference[];
+}) {
+  const isSpeaking = useIsSpeaking(participant);
+  const [volume, setVolume] = useState(100);
+
+  return (
+    <li className="space-y-2 rounded border p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span>{participant.name || participant.identity}{participant.isLocal ? " (you)" : ""}</span>
+        <span className={`rounded px-2 py-1 text-sm ${isSpeaking ? "bg-green-700 text-white" : "opacity-60"}`}>
+          {isSpeaking ? "Speaking" : "Not speaking"}
+        </span>
+      </div>
+      {!participant.isLocal && (
+        <>
+          <label className="flex flex-wrap items-center gap-3">
+            <span>Microphone volume: {volume}%</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={volume}
+              aria-label={`Microphone volume for ${participant.name || participant.identity}`}
+              aria-valuetext={`${volume}%`}
+              onChange={(event) => setVolume(Number(event.target.value))}
+            />
+          </label>
+          {microphoneTracks.map((trackRef) => (
+            <AudioTrack key={trackRef.publication.trackSid} trackRef={trackRef} volume={volume / 100} />
+          ))}
+        </>
+      )}
+    </li>
+  );
+}
 
 function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
   const connection = useConnectionState();
   const participants = useParticipants();
+  const microphoneTracks = useTracks([Track.Source.Microphone], { onlySubscribed: true });
   const { isMicrophoneEnabled } = useLocalParticipant();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -27,11 +67,16 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
     <section className="space-y-5">
       <p role="status">Connection: {connection}</p>
       <h2 className="text-lg font-semibold">Connected participants ({participants.length})</h2>
-      <ul className="list-inside list-disc space-y-2">
+      <ul className="space-y-3">
         {participants.map((participant) => (
-          <li key={participant.identity}>{participant.name || participant.identity}{participant.isLocal ? " (you)" : ""}</li>
+          <ParticipantRow
+            key={participant.identity}
+            participant={participant}
+            microphoneTracks={microphoneTracks.filter((trackRef) => trackRef.participant.identity === participant.identity)}
+          />
         ))}
       </ul>
+      <p className="text-sm opacity-70">Volume controls affect only what you hear in this browser.</p>
       <div className="flex flex-wrap gap-3">
         <button disabled={busy || connection !== ConnectionState.Connected} onClick={toggleMicrophone}>
           {isMicrophoneEnabled ? "Mute microphone" : "Unmute microphone"}
@@ -39,7 +84,6 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
         <button onClick={() => void leave()}>Leave call</button>
       </div>
       {error && <p role="alert" className="text-red-600">{error}</p>}
-      <RoomAudioRenderer />
       <StartAudio label="Enable call audio" />
     </section>
   );
