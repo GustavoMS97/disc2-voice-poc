@@ -2,7 +2,7 @@
 
 Minimal Next.js App Router voice call using LiveKit Cloud. Everyone joins the fixed
 room `games-poc`. Includes names, participant list, microphone mute/unmute, leave,
-connection/error states, and an audio playback button if the browser blocks autoplay.
+connection/error states, and an explicit playback-resume button.
 Step B adds speaking indicators for all participants and individual remote microphone
 volume sliders (0–100%, default 100%). Volume affects only the current listener and
 is kept while the participant remains in the call, including microphone mute/unmute
@@ -45,7 +45,7 @@ for this POC. No room creation step is needed: LiveKit creates it on first join.
 1. Open `http://localhost:3000` in Chrome and Firefox (or two separate browser profiles).
 2. Enter `Alice` in one and `Bob` in the other. Click **Join call** in each and allow microphone access.
 3. Confirm both pages show connection `connected` and both names in the participant list.
-4. If **Enable call audio** appears, click it.
+4. Tap **Enable / resume call playback** if audio/video is blocked or paused.
 5. Mute Bob while checking that Alice's microphone audio reaches Bob, then reverse the roles.
    Use headphones to reduce feedback; two clients using the same microphone on one
    computer are less useful for verifying real bidirectional conversation.
@@ -88,7 +88,7 @@ should never be requested. Both computers need internet access to LiveKit Cloud.
 6. Optionally join a third browser as Charlie: changing Bob's volume on Alice's
    page must leave Charlie's audio unchanged.
 7. Leave and rejoin to check participant cleanup and default volume restoration.
-   Recheck join, mute/unmute, leave, and **Enable call audio** if it appears.
+   Recheck join, mute/unmute, leave, and **Enable / resume call playback**.
 
 ## Test screen sharing on two Windows + Chrome computers
 
@@ -151,7 +151,7 @@ actual resolution and delivered frame rate.
 2. First test **Chrome Tab**: play a video or music in another tab on Alice's
    computer, click **Share screen**, choose that tab, enable **Share tab audio**
    (wording may vary), and share. Bob clicks **Watch** to see video and hear audio.
-   Click **Enable call audio** on Bob if it appears.
+   Click **Enable / resume call playback** on Bob if needed.
 3. In Alice's row on Bob's computer, confirm **Microphone audio**, **Screen-share
    video**, and **Screen-share audio** are published with three different SIDs.
    Status indicates publication/mute state, not that the source is producing sound.
@@ -253,12 +253,76 @@ Subscription-status text reports SDK track attachment, not a packet capture.
 Use per-stream RTP stats for network verification. Screen-audio volume resets
 to 100% after Stop watching/Watch; microphone volume remains unchanged.
 
+## iPhone/mobile POC checklist
+
+Deploy this version to Vercel, open the same HTTPS URL on a Windows + Chrome
+sharer and an iPhone browser, and reload/rejoin. Record the iPhone model, iOS
+version, browser, battery/Low Power Mode, and audio output (speaker/headphones).
+Test Safari first, then another browser if useful. This has not been validated
+on a physical iPhone by automated checks.
+
+### Expected application behavior
+
+1. Join on the iPhone with a long participant name. Allow microphone access.
+   There should be no horizontal overflow, clipped labels, or input-focus zoom.
+   Buttons and sliders should be usable by touch. Confirm connected participants,
+   speaking indicators, mute/unmute, and bidirectional microphone audio.
+2. Adjust a remote microphone slider from 100% to 40% to 0% and back. Only that
+   participant's microphone should change. LiveKit's built-in Web Audio playback
+   is enabled so iOS uses per-track gain nodes rather than element-volume controls.
+   Tracks remain separate; no custom mixer or master volume is introduced.
+3. Start sharing on Windows with YouTube/game audio. On iPhone, verify availability
+   appears without screen playback, then tap **Watch**. Confirm inline video/audio.
+   Tap **Enable / resume call playback** if the browser blocks or pauses playback.
+4. Adjust **Screen audio volume** independently from microphone volume. Test both
+   0%/100% combinations while the sharer speaks and media plays. Keep the iPhone
+   microphone muted during system capture if needed to avoid recapturing its voice.
+5. Rotate portrait → landscape → portrait while watching. Video should remain
+   contained within the viewport and preserve its content aspect ratio. Controls
+   remain reachable by scrolling. No Picture-in-Picture action is provided.
+6. Tap **Fullscreen**. Supported browsers enter fullscreen from this gesture.
+   Safari may use native video fullscreen with its own controls rather than the
+   page's controls. Exit via browser/native controls to reach volume/Stop watching.
+   If unavailable/rejected, a message should appear and inline viewing should continue.
+7. Tap **Stop watching**. Screen video/audio unsubscribe; microphone audio, mute,
+   volume, and room connection continue. Re-watch and test the sharer stopping.
+8. Observe **Connection**, **Page**, **Hidden transitions**, and **Wake lock**.
+   When supported/permitted, visible active calls should show wake lock **active**.
+   With a short device auto-lock setting, leave the visible call idle to check
+   whether the screen remains awake. Unsupported/denied locks must not prevent calls.
+9. Tap **Leave call**. Microphone/media should stop and wake lock should be released;
+   debug panel should show **inactive** and **disconnected**. Join again to check recovery.
+
+### Browser/OS behavior to observe, not guarantees from the app
+
+- Switch to another app for 10–30 seconds, then return. Check the hidden-transition
+  count, LiveKit state, whether voice/screen playback continued remotely, and whether
+  wake lock becomes active again. Retry with about a minute in the background.
+- Manually lock the iPhone, wait, unlock, and return to the browser. Record whether
+  the room stayed connected, reconnected, or disconnected, and whether microphone
+  capture and each remote audio/video stream resume. Use the explicit playback
+  button if needed; if disconnected, the normal join form lets you rejoin.
+- Wake lock only applies to an active visible document. It cannot prevent manual
+  locking or guarantee background execution. The browser can revoke or deny it,
+  including because of power settings; returning visible triggers a fresh request.
+- iOS may suspend the page, its AudioContext, capture, playback, or networking in
+  the background. The debug panel displays the last state JavaScript observed; it
+  cannot update while the OS suspends execution. No background workaround is used.
+- Native video fullscreen and autoplay permissions vary by iOS/browser version.
+  Fullscreen may show only video/native controls; microphone and screen audio are
+  separate playback tracks, so verify audio continues rather than assuming it.
+
+References: [Screen Wake Lock](https://developer.mozilla.org/en-US/docs/Web/API/Screen_Wake_Lock_API),
+[Safari video fullscreen](https://developer.apple.com/documentation/webkitjs/htmlvideoelement/1633500-webkitenterfullscreen),
+[Page Visibility](https://developer.mozilla.org/en-US/blog/using-the-page-visibility-api/).
+
 ## Checks
 
 ```bash
 npm run lint
 npx tsc --noEmit
 node scripts/check-screen-discovery.mjs
+node scripts/check-call-environment.mjs
 npm run build
 ```
 

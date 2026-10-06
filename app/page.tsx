@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AudioTrack, VideoTrack, RoomContext, StartAudio, useConnectionState, useIsSpeaking, useLocalParticipant, useParticipants, useTracks, type TrackReference } from "@livekit/components-react";
+import { AudioTrack, VideoTrack, RoomContext, useConnectionState, useIsSpeaking, useLocalParticipant, useParticipants, useTracks, type TrackReference } from "@livekit/components-react";
+import { enterVideoFullscreen, observeCallEnvironment, type CallEnvironmentStatus } from "./lib/call-environment";
 import { ConnectionState, ParticipantEvent, RemoteTrackPublication, Room, RoomEvent, ScreenSharePresets, Track, createLocalAudioTrack, type LocalAudioTrack, type LocalTrackPublication, type Participant } from "livekit-client";
 
 function subscribeMicrophones(room: Room) {
@@ -18,12 +19,15 @@ function subscribeMicrophones(room: Room) {
   return subscribeExisting;
 }
 
-function RemoteScreenShare({ video, audio, connected }: {
+function RemoteScreenShare({ video, audio, connected, room }: {
   video: TrackReference;
   audio?: TrackReference;
   connected: boolean;
+  room: Room;
 }) {
   const [watching, setWatching] = useState(false);
+  const [fullscreenMessage, setFullscreenMessage] = useState("");
+  const videoElement = useRef<HTMLVideoElement>(null);
   const videoPublication = video.publication;
   const audioPublication = audio?.publication;
 
@@ -43,7 +47,11 @@ function RemoteScreenShare({ video, audio, connected }: {
   return (
     <figure className="space-y-2">
       <figcaption><strong>{video.participant.name || video.participant.identity}</strong> is sharing their screen</figcaption>
-      <button disabled={!connected} onClick={() => setWatching(!watching)}>
+      <button disabled={!connected} onClick={() => {
+        if (!watching) void room.startAudio().catch(() => {});
+        setFullscreenMessage("");
+        setWatching(!watching);
+      }}>
         {watching ? "Stop watching" : "Watch"}
       </button>
       <p className="text-sm" role="status">
@@ -53,7 +61,19 @@ function RemoteScreenShare({ video, audio, connected }: {
       {watching && (
         <>
           {videoPublication.isSubscribed ? (
-            <VideoTrack trackRef={video} manageSubscription={false} className="aspect-video w-full rounded bg-black object-contain" muted playsInline />
+            <>
+              <VideoTrack ref={videoElement} trackRef={video} manageSubscription={false} className="screen-video" muted playsInline disablePictureInPicture />
+              <button onClick={async () => {
+                setFullscreenMessage("");
+                try {
+                  if (!videoElement.current) return;
+                  await enterVideoFullscreen(videoElement.current);
+                } catch (cause) {
+                  setFullscreenMessage(cause instanceof Error ? cause.message : "Fullscreen could not start. Continue watching inline.");
+                }
+              }}>Fullscreen</button>
+              {fullscreenMessage && <p role="status" className="text-sm">{fullscreenMessage}</p>}
+            </>
           ) : <p>Waiting for screen video subscription…</p>}
           {audio && audioPublication?.isSubscribed && (
             <ScreenAudioControl key={audioPublication.trackSid} trackRef={audio} />
@@ -260,20 +280,37 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
             </figcaption>
             <VideoTrack
               trackRef={trackRef}
-              className="aspect-video w-full rounded bg-black object-contain"
+              className="screen-video"
               muted
               playsInline
+              disablePictureInPicture
             />
           </figure> : <RemoteScreenShare
             key={trackRef.publication.trackSid}
             video={trackRef}
             audio={shareTracks.find((ref) => ref.participant.identity === trackRef.participant.identity && ref.source === Track.Source.ScreenShareAudio)}
             connected={connection === ConnectionState.Connected}
+            room={room}
           />
         ))}
       </section>
-      <StartAudio label="Enable call audio" />
+      <button onClick={async () => {
+        try { await Promise.all([room.startAudio(), room.startVideo()]); setError(""); }
+        catch { setError("Playback could not resume. Tap again and check the device audio output."); }
+      }}>Enable / resume call playback</button>
     </section>
+  );
+}
+
+function CallEnvironment({ active }: { active: boolean }) {
+  const [status, setStatus] = useState<CallEnvironmentStatus>();
+  useEffect(() => observeCallEnvironment(active, setStatus), [active]);
+  return (
+    <aside className="rounded border p-3 text-sm" aria-label="Browser debug status">
+      <p>Page: {status?.visibility ?? "checking"} · Hidden transitions: {status?.hiddenCount ?? 0}</p>
+      <p>Wake lock: {status?.wakeLock ?? "checking"}</p>
+      {!active && <p>Connection: disconnected</p>}
+    </aside>
   );
 }
 
@@ -297,7 +334,9 @@ export default function Home() {
     pending.current = true;
     setJoining(true);
     setError("");
-    const nextRoom = new Room();
+    // SDK gain nodes support independent track volume on iOS, where element volume is ignored.
+    const nextRoom = new Room({ webAudioMix: true });
+    void nextRoom.startAudio().catch(() => {});
     // Install before connecting so future publications and existing microphones are covered.
     const subscribeExistingMicrophones = subscribeMicrophones(nextRoom);
     let microphone: LocalAudioTrack | undefined;
@@ -352,7 +391,7 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-xl space-y-6 px-6 py-16">
+    <main className="mx-auto w-full min-w-0 max-w-xl space-y-6 px-4 py-8 sm:px-6 sm:py-16">
       <h1 className="text-3xl font-semibold">LiveKit voice call</h1>
       <p>Room: <strong>games-poc</strong></p>
       {room ? (
@@ -368,6 +407,7 @@ export default function Home() {
         </form>
       )}
       {error && <p role="alert" className="text-red-600">{error}</p>}
+      <CallEnvironment active={Boolean(room)} />
     </main>
   );
 }
