@@ -7,7 +7,9 @@ Step B adds speaking indicators for all participants and individual remote micro
 volume sliders (0–100%, default 100%). Volume affects only the current listener and
 is kept while the participant remains in the call, including microphone mute/unmute
 and track replacement. It resets when that participant leaves or you leave the call.
-No webcam, screen sharing, chat, authentication, database, or persistence.
+Basic screen sharing uses the browser's native picker, targets 1280×720 at 30 FPS,
+and automatically displays each shared screen with its participant's name.
+No webcam, screen/system audio, chat, authentication, database, or persistence.
 
 ## Setup
 
@@ -25,7 +27,7 @@ No webcam, screen sharing, chat, authentication, database, or persistence.
 
 `POST /api/livekit/token` accepts JSON `{ "name": "Alice" }`. It trims and validates
 names (1–80 characters), assigns a unique identity for each join, and issues a
-10-minute token scoped to `games-poc`, subscription, and microphone publishing only.
+10-minute token scoped to `games-poc`, subscription, and microphone/screen-video publishing only.
 The API secret stays on the server. The endpoint is intentionally unauthenticated
 for this POC. No room creation step is needed: LiveKit creates it on first join.
 
@@ -78,6 +80,54 @@ should never be requested. Both computers need internet access to LiveKit Cloud.
    page must leave Charlie's audio unchanged.
 7. Leave and rejoin to check participant cleanup and default volume restoration.
    Recheck join, mute/unmute, leave, and **Enable call audio** if it appears.
+
+## Test screen sharing on two Windows + Chrome computers
+
+1. Deploy this version to Vercel. Set `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and
+   `LIVEKIT_API_SECRET` for the deployment's Production or Preview environment,
+   and redeploy after environment changes. Open the same HTTPS deployment URL
+   in Chrome on both Windows computers. Both need internet access.
+2. Leave any existing calls and rejoin as Alice and Bob to get new tokens with
+   screen-video publishing permission. Allow microphone access and use headphones.
+3. On Alice's computer, click **Share screen**. In Chrome's native picker choose
+   a tab, window, or entire screen, then click **Share**. Choosing a different tab
+   or a window such as Notepad avoids a recursive preview of the call page.
+4. Confirm both computers show **Alice is sharing** and the screen video. Type or
+   scroll in the shared source and confirm Bob sees the updates. Alice should now
+   have a **Stop sharing** button. No webcam permission should be requested.
+5. Continue speaking, mute/unmute, and change microphone volume while sharing.
+   Voice, speaking indicators, and volume controls should continue working.
+   Screen/system audio is not captured or published.
+6. Click the app's **Stop sharing** on Alice. The video should disappear on both
+   computers and the button should return to **Share screen**.
+7. Start another share, then use Chrome's native **Stop sharing** control. Verify
+   the same cleanup and button reset, then start sharing again.
+8. Open the picker and click **Cancel**. The call should stay connected with no
+   new screen video, a brief cancellation/permission message, and an enabled
+   **Share screen** button for retrying.
+9. Share from Bob instead. You can also share from both computers simultaneously:
+   each participant can publish one local screen, and both named videos appear.
+10. Leave while sharing: the other computer should lose that participant's screen
+    and participant entry. Rejoin to confirm microphone and screen sharing work again.
+
+1280×720 at 30 FPS is a capture/encoding target, not a guarantee. The selected
+surface's aspect ratio, browser, available bandwidth, and encoder can affect
+actual resolution and delivered frame rate.
+
+### Track handling notes for the next step
+
+- Screen video has source `ScreenShare`, separate from `Microphone`. Screen audio
+  would be a separate `ScreenShareAudio` publication; it is disabled in capture
+  and excluded from token permissions here.
+- The SDK's `setScreenShareEnabled(false)` unpublishes and stops the screen track;
+  unlike microphone mute, it does not retain a muted screen publication.
+- The SDK also unpublishes screen tracks when the browser's capture track ends.
+  LiveKit React hooks update the button and video list from publication events.
+- A new sharing session has a new track SID. Videos are keyed by publication SID,
+  and sharer names come from the participant associated with each track reference.
+- Remote tracks are currently automatically subscribed. A future **Watch** flow
+  will need to list publications independently of subscription and explicitly
+  control subscription/rendering.
 
 ## Checks
 

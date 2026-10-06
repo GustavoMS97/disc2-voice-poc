@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AudioTrack, RoomContext, StartAudio, useConnectionState, useIsSpeaking, useLocalParticipant, useParticipants, useTracks, type TrackReference } from "@livekit/components-react";
-import { ConnectionState, Room, RoomEvent, Track, createLocalAudioTrack, type LocalAudioTrack, type Participant } from "livekit-client";
+import { AudioTrack, VideoTrack, RoomContext, StartAudio, useConnectionState, useIsSpeaking, useLocalParticipant, useParticipants, useTracks, type TrackReference } from "@livekit/components-react";
+import { ConnectionState, Room, RoomEvent, ScreenSharePresets, Track, createLocalAudioTrack, type LocalAudioTrack, type Participant } from "livekit-client";
 
 function ParticipantRow({ participant, microphoneTracks }: {
   participant: Participant;
@@ -47,9 +47,48 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
   const connection = useConnectionState();
   const participants = useParticipants();
   const microphoneTracks = useTracks([Track.Source.Microphone], { onlySubscribed: true });
-  const { isMicrophoneEnabled } = useLocalParticipant();
+  const screenTracks = useTracks([Track.Source.ScreenShare]);
+  const { isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [screenBusy, setScreenBusy] = useState(false);
+  const [screenMessage, setScreenMessage] = useState("");
+  const screenPending = useRef(false);
+
+  async function toggleScreenShare() {
+    if (screenPending.current || room.state !== ConnectionState.Connected) return;
+    screenPending.current = true;
+    setScreenBusy(true);
+    setScreenMessage("");
+    const starting = !room.localParticipant.isScreenShareEnabled;
+    try {
+      if (starting && !navigator.mediaDevices?.getDisplayMedia) {
+        setScreenMessage("Screen sharing requires HTTPS or localhost and a supported browser.");
+        return;
+      }
+      await room.localParticipant.setScreenShareEnabled(starting, {
+        audio: false,
+        systemAudio: "exclude",
+        resolution: ScreenSharePresets.h720fps30.resolution,
+      }, {
+        screenShareEncoding: ScreenSharePresets.h720fps30.encoding,
+      });
+      // A picker may finish after the user has left the call.
+      if (room.state !== ConnectionState.Connected) {
+        await room.localParticipant.setScreenShareEnabled(false);
+      }
+    } catch (cause) {
+      // Chrome uses NotAllowedError for both picker cancellation and permission denial.
+      if (starting && cause instanceof Error && (cause.name === "NotAllowedError" || cause.name === "AbortError")) {
+        setScreenMessage("Screen sharing was cancelled or permission was denied. You can try again.");
+      } else {
+        setScreenMessage(starting ? "Could not share your screen. Please try again." : "Could not stop sharing. Try again or use the browser's Stop sharing control.");
+      }
+    } finally {
+      screenPending.current = false;
+      setScreenBusy(false);
+    }
+  }
 
   async function toggleMicrophone() {
     setBusy(true);
@@ -81,9 +120,31 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
         <button disabled={busy || connection !== ConnectionState.Connected} onClick={toggleMicrophone}>
           {isMicrophoneEnabled ? "Mute microphone" : "Unmute microphone"}
         </button>
+        <button disabled={screenBusy || connection !== ConnectionState.Connected} onClick={() => void toggleScreenShare()}>
+          {screenBusy ? "Please wait…" : isScreenShareEnabled ? "Stop sharing" : "Share screen"}
+        </button>
         <button onClick={() => void leave()}>Leave call</button>
       </div>
+      {screenMessage && <p role="status">{screenMessage}</p>}
       {error && <p role="alert" className="text-red-600">{error}</p>}
+      <section className="space-y-3" aria-label="Shared screens">
+        <h2 className="text-lg font-semibold">Shared screens</h2>
+        {screenTracks.length === 0 && <p>No one is sharing a screen.</p>}
+        {screenTracks.map((trackRef) => (
+          <figure key={trackRef.publication.trackSid} className="space-y-2">
+            <figcaption>
+              <strong>{trackRef.participant.name || trackRef.participant.identity}</strong>
+              {trackRef.participant.isLocal ? " (you)" : ""} is sharing
+            </figcaption>
+            <VideoTrack
+              trackRef={trackRef}
+              className="aspect-video w-full rounded bg-black object-contain"
+              muted
+              playsInline
+            />
+          </figure>
+        ))}
+      </section>
       <StartAudio label="Enable call audio" />
     </section>
   );
