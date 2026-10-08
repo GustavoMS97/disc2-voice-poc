@@ -76,9 +76,9 @@ export default function CallDiagnostics({ room }: { room?: Room }) {
   }, [room]);
 
   return (
-    <details className="rounded border p-3 text-sm" open>
-      <summary className="cursor-pointer font-semibold">Call diagnostics (local browser)</summary>
-      <div className="mt-2 space-y-2">
+    <details className="card text-xs">
+      <summary className="cursor-pointer text-sm font-semibold">Call diagnostics (local browser)</summary>
+      <div className="muted mt-2 space-y-2">
         <p>Room: games-poc · Connection: {snapshot.connection}</p>
         <p>Participants: {snapshot.participants.length} (includes you)</p>
         <ul>{snapshot.participants.map((participant) => (

@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LiveKit Voice POC",
+  title: "SABU.GO",
   description: "Basic browser voice calls in games-poc",
 };
 
