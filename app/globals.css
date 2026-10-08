@@ -1,8 +1,20 @@
 @import "tailwindcss";
 
+/* SABU.GO brand: near-black, warm off-white and amber. Dark-only on purpose. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+  --background: #0c0c0f;
+  --foreground: #f3efe4;
+  --surface: #17171b;
+  --surface-muted: #202026;
+  --border: #2c2c33;
+  --muted: #9b978d;
+  --accent: #fbb423;
+  --accent-hover: #e3a114;
+  --accent-contrast: #0c0c0f;
+  --success: #3ccf6e;
+  --danger: #e5484d;
+  --danger-hover: #c93a3f;
 }
 
 @theme inline {
@@ -12,25 +24,55 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
 button {
-  border: 1px solid currentColor;
+  border: 1px solid var(--border);
   border-radius: 0.5rem;
   padding: 0.6rem 1rem;
   cursor: pointer;
   min-height: 44px;
+  background: var(--surface-muted);
+  color: var(--foreground);
+  font-weight: 500;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+
+button:focus-visible,
+input:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+button.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+button.btn-danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #ffffff;
+}
+
+button.btn-danger:hover:not(:disabled) {
+  background: var(--danger-hover);
+  border-color: var(--danger-hover);
 }
 
 button:disabled {
@@ -45,11 +87,80 @@ main, section, figure, li {
 
 input:not([type="range"]) {
   font-size: 16px;
+  background: var(--surface-muted);
+  border-color: var(--border);
+  color: var(--foreground);
 }
 
 input[type="range"] {
   width: min(100%, 16rem);
   min-height: 44px;
+  accent-color: var(--accent);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.brand-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.875rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.brand-word {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.brand-dot {
+  color: var(--accent);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.125rem 0.625rem;
+  font-size: 0.8125rem;
+  background: var(--surface-muted);
+  color: var(--muted);
+}
+
+.badge-live {
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+  color: var(--success);
+}
+
+.avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px transparent;
+  transition: box-shadow 120ms ease;
+}
+
+.avatar-speaking {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--success);
 }
 
 .screen-video {

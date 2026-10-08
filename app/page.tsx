@@ -46,16 +46,16 @@ function RemoteScreenShare({ video, audio, connected, room }: {
   }, [audioPublication, watching]);
 
   return (
-    <figure className="space-y-2">
+    <figure className="card space-y-3">
       <figcaption><strong>{video.participant.name || video.participant.identity}</strong> is sharing their screen</figcaption>
-      <button disabled={!connected} onClick={() => {
+      <button className={watching ? undefined : "btn-primary"} disabled={!connected} onClick={() => {
         if (!watching) void room.startAudio().catch(() => {});
         setFullscreenMessage("");
         setWatching(!watching);
       }}>
         {watching ? "Stop watching" : "Watch"}
       </button>
-      <p className="text-sm" role="status">
+      <p className="muted text-sm" role="status">
         {watching ? "Watching" : "Not watching"} · Video: {videoPublication.isSubscribed ? "subscribed" : "not subscribed"}
         {audioPublication ? ` · Screen audio: ${audioPublication.isSubscribed ? "subscribed" : "not subscribed"}` : " · No screen audio available"}
       </p>
@@ -119,14 +119,17 @@ function ParticipantRow({ participant, microphoneTracks, shareTracks }: {
   const screenAudio = shareTracks.find((ref) => ref.source === Track.Source.ScreenShareAudio);
 
   return (
-    <li className="space-y-2 rounded border p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span>{participant.name || participant.identity}{participant.isLocal ? " (you)" : ""}</span>
-        <span className={`rounded px-2 py-1 text-sm ${isSpeaking ? "bg-green-700 text-white" : "opacity-60"}`}>
+    <li className="card space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <span aria-hidden="true" className={`avatar ${isSpeaking ? "avatar-speaking" : ""}`}>
+          {(participant.name || participant.identity).trim().charAt(0).toUpperCase()}
+        </span>
+        <span className="font-medium">{participant.name || participant.identity}{participant.isLocal ? " (you)" : ""}</span>
+        <span className={`badge ${isSpeaking ? "badge-live" : ""}`}>
           {isSpeaking ? "Speaking" : "Not speaking"}
         </span>
       </div>
-      <ul className="space-y-1 break-all text-sm">
+      <ul className="muted space-y-1 break-all text-xs">
         <li>Microphone audio: {microphoneTracks.length ? microphoneTracks.map((ref) => `${ref.publication.isMuted ? "Muted" : "Published"} (${ref.publication.trackSid})`).join(", ") : "Not published"}</li>
         <li>Screen-share video: {screenVideo ? `Published (${screenVideo.publication.trackSid})` : "Not published"}</li>
         <li>Screen-share audio: {screenAudio ? `${screenAudio.publication.isMuted ? "Muted" : "Published"} (${screenAudio.publication.trackSid})` : screenVideo ? "No audio track provided by the browser" : "Not published"}</li>
@@ -245,9 +248,9 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
 
   return (
     <section className="space-y-5">
-      <p role="status">Connection: {connection}</p>
+      <p role="status"><span className={`badge ${connection === ConnectionState.Connected ? "badge-live" : ""}`}>Connection: {connection}</span></p>
       <h2 className="text-lg font-semibold">Connected participants ({participants.length})</h2>
-      <ul className="space-y-3">
+      <ul className="grid gap-3 sm:grid-cols-2">
         {participants.map((participant) => (
           <ParticipantRow
             key={participant.identity}
@@ -257,24 +260,24 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
           />
         ))}
       </ul>
-      <p className="text-sm opacity-70">Volume controls affect only what you hear in this browser.</p>
-      <div className="flex flex-wrap gap-3">
-        <button disabled={busy || connection !== ConnectionState.Connected} onClick={toggleMicrophone}>
+      <p className="muted text-sm">Volume controls affect only what you hear in this browser.</p>
+      <div className="card sticky bottom-3 z-10 flex flex-wrap gap-3 shadow-lg">
+        <button className={isMicrophoneEnabled ? undefined : "btn-danger"} disabled={busy || connection !== ConnectionState.Connected} onClick={toggleMicrophone}>
           {isMicrophoneEnabled ? "Mute microphone" : "Unmute microphone"}
         </button>
-        <button disabled={screenBusy || connection !== ConnectionState.Connected} onClick={() => void toggleScreenShare()}>
+        <button className={isScreenShareEnabled ? undefined : "btn-primary"} disabled={screenBusy || connection !== ConnectionState.Connected} onClick={() => void toggleScreenShare()}>
           {screenBusy ? "Please wait…" : isScreenShareEnabled ? "Stop sharing" : "Share screen"}
         </button>
-        <button onClick={() => void leave()}>Leave call</button>
+        <button className="btn-danger sm:ml-auto" onClick={() => void leave()}>Leave call</button>
       </div>
-      <p className="text-sm opacity-70">To share audio, enable the audio checkbox in Chrome&apos;s screen picker when available.</p>
+      <p className="muted text-sm">To share audio, enable the audio checkbox in Chrome&apos;s screen picker when available.</p>
       {screenMessage && <p role="status">{screenMessage}</p>}
       {error && <p role="alert" className="text-red-600">{error}</p>}
       <section className="space-y-3" aria-label="Shared screens">
         <h2 className="text-lg font-semibold">Shared screens</h2>
-        {screenTracks.length === 0 && <p>No one is sharing a screen.</p>}
+        {screenTracks.length === 0 && <p className="card muted">No one is sharing a screen.</p>}
         {screenTracks.map((trackRef) => (
-          trackRef.participant.isLocal ? <figure key={trackRef.publication.trackSid} className="space-y-2">
+          trackRef.participant.isLocal ? <figure key={trackRef.publication.trackSid} className="card space-y-3">
             <figcaption>
               <strong>{trackRef.participant.name || trackRef.participant.identity}</strong>
               {trackRef.participant.isLocal ? " (you)" : ""} is sharing
@@ -307,7 +310,7 @@ function CallEnvironment({ active }: { active: boolean }) {
   const [status, setStatus] = useState<CallEnvironmentStatus>();
   useEffect(() => observeCallEnvironment(active, setStatus), [active]);
   return (
-    <aside className="rounded border p-3 text-sm" aria-label="Browser debug status">
+    <aside className="card muted text-xs" aria-label="Browser debug status">
       <p>Page: {status?.visibility ?? "checking"} · Hidden transitions: {status?.hiddenCount ?? 0}</p>
       <p>Wake lock: {status?.wakeLock ?? "checking"}</p>
       {!active && <p>Connection: disconnected</p>}
@@ -413,32 +416,53 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto w-full min-w-0 max-w-xl space-y-6 px-4 py-8 sm:px-6 sm:py-16">
-      <h1 className="text-3xl font-semibold">LiveKit voice call</h1>
-      <p>Room: <strong>games-poc</strong></p>
+    <main className="mx-auto w-full min-w-0 max-w-3xl space-y-6 px-4 py-8 sm:px-6 sm:py-12">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="brand-mark" aria-hidden="true">
+            <svg width="22" height="28" viewBox="0 0 24 30" fill="var(--accent)">
+              <rect x="9" y="0" width="6" height="4" rx="2" />
+              <rect x="1" y="6" width="5" height="4" rx="2" />
+              <rect x="18" y="6" width="5" height="4" rx="2" />
+              <rect x="8" y="5" width="8" height="6" rx="2.5" />
+              <rect x="1" y="12" width="5" height="10" rx="2.5" />
+              <rect x="18" y="12" width="5" height="10" rx="2.5" />
+              <rect x="8" y="12" width="8" height="9" rx="2.5" />
+              <rect x="3" y="24" width="4" height="3" rx="1.5" />
+              <rect x="17" y="24" width="4" height="3" rx="1.5" />
+              <rect x="8" y="22" width="8" height="8" rx="2.5" />
+            </svg>
+          </span>
+          <div>
+            <h1 className="brand-word text-3xl">Sabu<span className="brand-dot">.</span>Go</h1>
+            <p className="muted text-sm">LiveKit voice call</p>
+          </div>
+        </div>
+        <p className="badge">Room: <strong className="ml-1">games-poc</strong></p>
+      </header>
       {room ? (
         <RoomContext.Provider value={room}><Call room={room} leave={leave} /></RoomContext.Provider>
       ) : !allowedEmail ? (
-        <form onSubmit={checkAccess} className="space-y-4">
+        <form onSubmit={checkAccess} className="card space-y-4">
           <label className="block space-y-2">
             <span>Email address</span>
             <input className="block w-full rounded border px-3 py-2" type="email" autoComplete="email" inputMode="email" required maxLength={254} value={email} disabled={checkingEmail} onChange={(event) => setEmail(event.target.value)} />
           </label>
-          <button type="submit" disabled={checkingEmail || !email.trim()}>{checkingEmail ? "Checking…" : "Continue"}</button>
+          <button className="btn-primary" type="submit" disabled={checkingEmail || !email.trim()}>{checkingEmail ? "Checking…" : "Continue"}</button>
         </form>
       ) : (
-        <form onSubmit={join} className="space-y-4">
-          <p className="text-sm">Email: {allowedEmail}</p>
+        <form onSubmit={join} className="card space-y-4">
+          <p className="muted text-sm">Email: {allowedEmail}</p>
           <label className="block space-y-2">
             <span>Participant name</span>
             <input className="block w-full rounded border px-3 py-2" required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} disabled={joining} autoComplete="nickname" />
           </label>
-          <button disabled={joining || !name.trim()} type="submit">{joining ? "Joining…" : "Join call"}</button>
+          <button className="btn-primary" disabled={joining || !name.trim()} type="submit">{joining ? "Joining…" : "Join call"}</button>
           <button className="ml-3" type="button" disabled={joining} onClick={() => { setAllowedEmail(""); setError(""); }}>Change email</button>
-          <p role="status">{joining ? "Requesting microphone access and connecting…" : "Disconnected"}</p>
+          <p className="muted text-sm" role="status">{joining ? "Requesting microphone access and connecting…" : "Disconnected"}</p>
         </form>
       )}
-      {error && <p role="alert" className="text-red-600">{error}</p>}
+      {error && <p role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-red-500">{error}</p>}
       <CallEnvironment active={Boolean(room)} />
       <CallDiagnostics room={room} />
     </main>
