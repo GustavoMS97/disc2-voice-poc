@@ -333,6 +333,54 @@ References: [Screen Wake Lock](https://developer.mozilla.org/en-US/docs/Web/API/
 [Safari video fullscreen](https://developer.apple.com/documentation/webkitjs/htmlvideoelement/1633500-webkitenterfullscreen),
 [Page Visibility](https://developer.mozilla.org/en-US/blog/using-the-page-visibility-api/).
 
+## Audio input/output devices
+
+While connected, expand **Audio devices** beside the call controls. **Microphone**
+lists browser-exposed audio inputs and switches the LiveKit microphone in place,
+preserving mute state. **Output** changes only this app's playback destination,
+including remote microphones and subscribed screen-share audio; Windows defaults
+are unchanged. LiveKit's shared Web Audio context retains independent track gains.
+The SDK also updates output settings for current/future remote tracks.
+
+Successful choices are stored as `games-poc.audioinput` / `games-poc.audiooutput`
+in localStorage for this browser/origin. On joining again, the app tries restoring
+them after microphone permission/publication; a missing or rejected saved device
+falls back to system default. Device IDs can change after browser permission/data
+resets. Storage denial is harmless. Unplugging a selected device triggers a default
+fallback; if no working default exists, select another device and check permissions.
+
+Output selection requires HTTPS and Web Audio `AudioContext.setSinkId` support
+(current Windows Chrome is the main target). Unsupported browsers, including some
+mobile/Safari versions, show a disabled output selector and retain system routing.
+Only devices exposed by browser permissions are listed. Grant microphone permission
+and check site/OS permissions if labels or outputs are missing. Device selection
+does not change system-audio capture: the screen picker still controls that source.
+
+### Windows + Chrome manual checklist
+
+1. Join with another participant and expand **Audio devices**.
+2. Switch between two microphone inputs without leaving. Speak/tap each microphone;
+   the remote participant should hear only the selected one. Confirm the selector's
+   label, speaking indicator, mute/unmute, and participant list remain correct.
+3. Mute, switch microphone, then unmute. Switching must not silently unmute you.
+4. Switch between two outputs (for example Sonar Gaming/Chat or headphones/speakers).
+   Remote voice should move to the selected output. Windows global/default output
+   must remain unchanged. Select **System default** to return to browser routing.
+5. Have the other participant share media/game with system audio; tap **Watch**.
+   Both voice and screen audio should use the selected output. Switch output again
+   while both play. Stop watching/re-watch and verify newly attached audio routes
+   correctly too.
+6. Test both independent volume sliders after switching: mic 0% / screen 100%,
+   then mic 100% / screen 0%. Only the selected source should become silent.
+7. Disconnect/reconnect the selected physical device. Check updated dropdowns and
+   default fallback/error message. Call remains connected; choose the device again
+   if desired. Virtual Sonar devices may remain enumerated when a headset is unplugged.
+8. Choose nondefault devices, leave, reload, and rejoin. When the IDs still exist,
+   both selections should restore. Repeat with a saved device missing: defaults
+   should work. Check mobile voice/viewing and unsupported-output messaging.
+
+Browser API reference: [AudioContext.setSinkId](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/setSinkId).
+
 ## Checks
 
 ```bash
@@ -342,6 +390,7 @@ node scripts/check-screen-discovery.mjs
 node scripts/check-call-environment.mjs
 node scripts/check-call-diagnostics.mjs
 node scripts/check-email-access.mjs
+node scripts/check-audio-devices.mjs
 npm run build
 ```
 
