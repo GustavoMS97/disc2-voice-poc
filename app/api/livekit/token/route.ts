@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { AccessToken, TrackSource } from "livekit-server-sdk";
 import { checkEmailAccess } from "@/app/lib/email-allowlist";
+import { DEFAULT_AVATAR, isAvatarId } from "@/app/lib/avatars";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,10 @@ export async function POST(request: Request) {
   if (typeof name !== "string" || !name.trim() || name.trim().length > 80) {
     return Response.json({ error: "Enter a participant name between 1 and 80 characters." }, { status: 400 });
   }
+  const avatar = typeof body === "object" && body !== null && "avatar" in body ? body.avatar : DEFAULT_AVATAR;
+  if (!isAvatarId(avatar)) {
+    return Response.json({ error: "Choose one of the available avatars." }, { status: 400 });
+  }
 
   const serverUrl = process.env.LIVEKIT_URL;
   const apiKey = process.env.LIVEKIT_API_KEY;
@@ -28,7 +33,7 @@ export async function POST(request: Request) {
 
   try {
     const token = new AccessToken(apiKey, apiSecret, {
-      identity: randomUUID(), name: name.trim(), ttl: "10m",
+      identity: randomUUID(), name: name.trim(), ttl: "10m", attributes: { avatar },
     });
     token.addGrant({
       roomJoin: true, room: "games-poc", canSubscribe: true,
