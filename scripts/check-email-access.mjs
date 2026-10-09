@@ -6,6 +6,7 @@ import ts from "typescript";
 import { TokenVerifier } from "livekit-server-sdk";
 
 let allowlistModule;
+let avatarsModule;
 function load(relative) {
   const filename = fileURLToPath(new URL(relative, import.meta.url));
   const compiled = ts.transpileModule(readFileSync(filename, "utf8"), {
@@ -14,11 +15,13 @@ function load(relative) {
   const instance = new Module(filename);
   instance.filename = filename;
   const require = createRequire(filename);
-  instance.require = (name) => name === "@/app/lib/email-allowlist" ? allowlistModule : require(name);
+  instance.require = (name) => name === "@/app/lib/email-allowlist" ? allowlistModule
+    : name === "@/app/lib/avatars" ? avatarsModule : require(name);
   instance._compile(compiled, filename);
   return instance.exports;
 }
 allowlistModule = load("../app/lib/email-allowlist.ts");
+avatarsModule = load("../app/lib/avatars.ts");
 const access = load("../app/api/livekit/access/route.ts");
 const token = load("../app/api/livekit/token/route.ts");
 const keys = ["ALLOWED_EMAILS", "LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"];
@@ -45,11 +48,19 @@ try {
   assert.equal(claims.video.room, "games-poc");
   assert.deepEqual(claims.video.canPublishSources, ["microphone", "screen_share", "screen_share_audio"]);
   assert.equal(JSON.stringify(claims).includes("example.com"), false);
+  assert.deepEqual(claims.attributes, { avatar: "1" }, "Missing avatar falls back to the default");
+  const chosen = await token.POST(request({ name: "Alice", email: "alice@example.com", avatar: "8" }));
+  const chosenClaims = await new TokenVerifier(process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET).verify((await chosen.json()).token);
+  assert.deepEqual(chosenClaims.attributes, { avatar: "8" });
+  for (const avatar of ["9", "0", 3, "../x", null]) {
+    const rejected = await token.POST(request({ name: "Alice", email: "alice@example.com", avatar }));
+    assert.equal(rejected.status, 400, `Avatar ${JSON.stringify(avatar)} is rejected`);
+  }
   process.env.ALLOWED_EMAILS = " , ";
   assert.equal((await token.POST(request({ name: "Alice", email: "alice@example.com" }))).status, 503);
   delete process.env.ALLOWED_EMAILS;
   assert.equal((await access.POST(request({ email: "alice@example.com" }))).status, 503);
-  console.log("PASS: exact/case-insensitive allowlist, fail-closed configuration, server-side token enforcement, unchanged media grants, no email in token.");
+  console.log("PASS: exact/case-insensitive allowlist, fail-closed configuration, server-side token enforcement, unchanged media grants, no email in token, validated avatar attribute.");
 } finally {
   keys.forEach((key, index) => {
     if (previous[index] === undefined) delete process.env[key];
