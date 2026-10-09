@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AudioTrack, VideoTrack, RoomContext, useConnectionState, useIsSpeaking, useLocalParticipant, useParticipants, useTracks, type TrackReference } from "@livekit/components-react";
+import { AudioTrack, VideoTrack, RoomContext, useConnectionState, useIsSpeaking, useLocalParticipant, useParticipantAttribute, useParticipants, useTracks, type TrackReference } from "@livekit/components-react";
 import { enterVideoFullscreen, observeCallEnvironment, type CallEnvironmentStatus } from "./lib/call-environment";
+import { AVATAR_IDS, DEFAULT_AVATAR, avatarPixels, isAvatarId } from "./lib/avatars";
 import CallDiagnostics from "./call-diagnostics";
+import PixelAvatar from "./pixel-avatar";
 import { ConnectionState, ParticipantEvent, RemoteTrackPublication, Room, RoomEvent, ScreenSharePresets, Track, createLocalAudioTrack, type LocalAudioTrack, type LocalTrackPublication, type Participant } from "livekit-client";
 
 function subscribeMicrophones(room: Room) {
@@ -114,6 +116,7 @@ function ParticipantRow({ participant, microphoneTracks, shareTracks }: {
   shareTracks: TrackReference[];
 }) {
   const isSpeaking = useIsSpeaking(participant);
+  const avatar = useParticipantAttribute("avatar", { participant });
   const [volume, setVolume] = useState(100);
   const screenVideo = shareTracks.find((ref) => ref.source === Track.Source.ScreenShare);
   const screenAudio = shareTracks.find((ref) => ref.source === Track.Source.ScreenShareAudio);
@@ -122,7 +125,7 @@ function ParticipantRow({ participant, microphoneTracks, shareTracks }: {
     <li className="card space-y-3">
       <div className="flex flex-wrap items-center gap-3">
         <span aria-hidden="true" className={`avatar ${isSpeaking ? "avatar-speaking" : ""}`}>
-          {(participant.name || participant.identity).trim().charAt(0).toUpperCase()}
+          <PixelAvatar id={isAvatarId(avatar) ? avatar : DEFAULT_AVATAR} size={32} />
         </span>
         <span className="font-medium">{participant.name || participant.identity}{participant.isLocal ? " (you)" : ""}</span>
         <span className={`badge ${isSpeaking ? "badge-live" : ""}`}>
@@ -323,6 +326,7 @@ export default function Home() {
   const [allowedEmail, setAllowedEmail] = useState("");
   const [checkingEmail, setCheckingEmail] = useState(false);
   const [name, setName] = useState("");
+  const [avatar, setAvatar] = useState(DEFAULT_AVATAR);
   const [room, setRoom] = useState<Room>();
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState("");
@@ -373,7 +377,7 @@ export default function Home() {
       const response = await fetch("/api/livekit/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email: allowedEmail }),
+        body: JSON.stringify({ name, email: allowedEmail, avatar }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not get a call token.");
@@ -457,6 +461,17 @@ export default function Home() {
             <span>Participant name</span>
             <input className="block w-full rounded border px-3 py-2" required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} disabled={joining} autoComplete="nickname" />
           </label>
+          <fieldset className="space-y-2" disabled={joining}>
+            <legend className="mb-2">Avatar</legend>
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+              {AVATAR_IDS.map((id) => (
+                <label key={id} className="avatar-option" title={avatarPixels(id).label}>
+                  <input className="sr-only" type="radio" name="avatar" value={id} checked={avatar === id} onChange={() => setAvatar(id)} aria-label={avatarPixels(id).label} />
+                  <PixelAvatar id={id} size={48} />
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <button className="btn-primary" disabled={joining || !name.trim()} type="submit">{joining ? "Joining…" : "Join call"}</button>
           <button className="ml-3" type="button" disabled={joining} onClick={() => { setAllowedEmail(""); setError(""); }}>Change email</button>
           <p className="muted text-sm" role="status">{joining ? "Requesting microphone access and connecting…" : "Disconnected"}</p>
