@@ -6,6 +6,8 @@ import { enterVideoFullscreen, observeCallEnvironment, type CallEnvironmentStatu
 import { AVATAR_IDS, DEFAULT_AVATAR, avatarPixels, isAvatarId } from "./lib/avatars";
 import CallDiagnostics from "./call-diagnostics";
 import PixelAvatar from "./pixel-avatar";
+import AudioDeviceControls from "./audio-device-controls";
+import { createAudioRoom, closeAudioDeviceContext } from "./lib/audio-devices";
 import { ConnectionState, ParticipantEvent, RemoteTrackPublication, Room, RoomEvent, ScreenSharePresets, Track, createLocalAudioTrack, type LocalAudioTrack, type LocalTrackPublication, type Participant } from "livekit-client";
 
 function subscribeMicrophones(room: Room) {
@@ -264,6 +266,7 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
         ))}
       </ul>
       <p className="muted text-sm">Volume controls affect only what you hear in this browser.</p>
+      <AudioDeviceControls room={room} />
       <div className="card sticky bottom-3 z-10 flex flex-wrap gap-3 shadow-lg">
         <button className={isMicrophoneEnabled ? undefined : "btn-danger"} disabled={busy || connection !== ConnectionState.Connected} onClick={toggleMicrophone}>
           {isMicrophoneEnabled ? "Mute microphone" : "Unmute microphone"}
@@ -337,6 +340,7 @@ export default function Home() {
     const current = activeRoom.current;
     activeRoom.current = null;
     void current?.disconnect();
+    if (current) closeAudioDeviceContext(current);
   }, []);
 
   async function checkAccess(event: React.FormEvent<HTMLFormElement>) {
@@ -364,7 +368,7 @@ export default function Home() {
     setJoining(true);
     setError("");
     // SDK gain nodes support independent track volume on iOS, where element volume is ignored.
-    const nextRoom = new Room({ webAudioMix: true });
+    const nextRoom = createAudioRoom();
     void nextRoom.startAudio().catch(() => {});
     // Install before connecting so future publications and existing microphones are covered.
     const subscribeExistingMicrophones = subscribeMicrophones(nextRoom);
@@ -405,6 +409,7 @@ export default function Home() {
         setError(cause instanceof Error ? cause.message : "Could not join the call.");
       }
       await nextRoom.disconnect();
+      closeAudioDeviceContext(nextRoom);
     } finally {
       pending.current = false;
       setJoining(false);
@@ -417,6 +422,7 @@ export default function Home() {
     setRoom(undefined);
     setError("");
     await current?.disconnect();
+    if (current) closeAudioDeviceContext(current);
   }
 
   return (
