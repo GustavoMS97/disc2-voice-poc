@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { AudioTrack, VideoTrack, RoomContext, useConnectionState, useIsSpeaking, useLocalParticipant, useParticipantAttribute, useParticipants, useTracks, type TrackReference } from "@livekit/components-react";
 import { enterVideoFullscreen, observeCallEnvironment, type CallEnvironmentStatus } from "./lib/call-environment";
 import { AVATAR_IDS, DEFAULT_AVATAR, avatarPixels, isAvatarId } from "./lib/avatars";
+import { HeadphoneOff, Headphones, LogOut, Mic, MicOff, Monitor, MonitorOff, MonitorUp } from "lucide-react";
 import CallDiagnostics from "./call-diagnostics";
 import PixelAvatar from "./pixel-avatar";
 import AudioDeviceControls from "./audio-device-controls";
@@ -24,10 +25,11 @@ function subscribeMicrophones(room: Room) {
   return subscribeExisting;
 }
 
-function RemoteScreenShare({ video, audio, connected, room }: {
+function RemoteScreenShare({ video, audio, connected, deafened, room }: {
   video: TrackReference;
   audio?: TrackReference;
   connected: boolean;
+  deafened: boolean;
   room: Room;
 }) {
   const [watching, setWatching] = useState(false);
@@ -59,10 +61,6 @@ function RemoteScreenShare({ video, audio, connected, room }: {
       }}>
         {watching ? "Stop watching" : "Watch"}
       </button>
-      <p className="muted text-sm" role="status">
-        {watching ? "Watching" : "Not watching"} · Video: {videoPublication.isSubscribed ? "subscribed" : "not subscribed"}
-        {audioPublication ? ` · Screen audio: ${audioPublication.isSubscribed ? "subscribed" : "not subscribed"}` : " · No screen audio available"}
-      </p>
       {watching && (
         <>
           {videoPublication.isSubscribed ? (
@@ -81,7 +79,7 @@ function RemoteScreenShare({ video, audio, connected, room }: {
             </>
           ) : <p>Waiting for screen video subscription…</p>}
           {audio && audioPublication?.isSubscribed && (
-            <ScreenAudioControl key={audioPublication.trackSid} trackRef={audio} />
+            <ScreenAudioControl key={audioPublication.trackSid} trackRef={audio} deafened={deafened} />
           )}
         </>
       )}
@@ -89,7 +87,7 @@ function RemoteScreenShare({ video, audio, connected, room }: {
   );
 }
 
-function ScreenAudioControl({ trackRef }: { trackRef: TrackReference }) {
+function ScreenAudioControl({ trackRef, deafened }: { trackRef: TrackReference; deafened: boolean }) {
   const [volume, setVolume] = useState(100);
 
   return (
@@ -107,21 +105,22 @@ function ScreenAudioControl({ trackRef }: { trackRef: TrackReference }) {
           onChange={(event) => setVolume(Number(event.target.value))}
         />
       </label>
-      <AudioTrack trackRef={trackRef} volume={volume / 100} />
+      <AudioTrack trackRef={trackRef} volume={deafened ? 0 : volume / 100} />
     </>
   );
 }
 
-function ParticipantRow({ participant, microphoneTracks, shareTracks }: {
+function ParticipantRow({ participant, microphoneTracks, shareTracks, deafened }: {
   participant: Participant;
   microphoneTracks: TrackReference[];
   shareTracks: TrackReference[];
+  deafened: boolean;
 }) {
   const isSpeaking = useIsSpeaking(participant);
   const avatar = useParticipantAttribute("avatar", { participant });
   const [volume, setVolume] = useState(100);
   const screenVideo = shareTracks.find((ref) => ref.source === Track.Source.ScreenShare);
-  const screenAudio = shareTracks.find((ref) => ref.source === Track.Source.ScreenShareAudio);
+  const microphoneMuted = !microphoneTracks.some((ref) => !ref.publication.isMuted);
 
   return (
     <li className="card space-y-3">
@@ -130,15 +129,13 @@ function ParticipantRow({ participant, microphoneTracks, shareTracks }: {
           <PixelAvatar id={isAvatarId(avatar) ? avatar : DEFAULT_AVATAR} size={32} />
         </span>
         <span className="font-medium">{participant.name || participant.identity}{participant.isLocal ? " (you)" : ""}</span>
-        <span className={`badge ${isSpeaking ? "badge-live" : ""}`}>
-          {isSpeaking ? "Speaking" : "Not speaking"}
+        <span className="ml-auto flex items-center gap-2">
+          {screenVideo && <span className="status-icon status-live" title="Sharing screen"><Monitor size={16} aria-hidden="true" /><span className="sr-only">Sharing screen</span></span>}
+          {participant.isLocal && deafened && <span className="status-icon status-off" title="Deafened"><HeadphoneOff size={16} aria-hidden="true" /><span className="sr-only">Deafened</span></span>}
+          {microphoneMuted && <span className="status-icon status-off" title="Microphone muted"><MicOff size={16} aria-hidden="true" /><span className="sr-only">Microphone muted</span></span>}
+          <span className="sr-only">{isSpeaking ? "Speaking" : "Not speaking"}</span>
         </span>
       </div>
-      <ul className="muted space-y-1 break-all text-xs">
-        <li>Microphone audio: {microphoneTracks.length ? microphoneTracks.map((ref) => `${ref.publication.isMuted ? "Muted" : "Published"} (${ref.publication.trackSid})`).join(", ") : "Not published"}</li>
-        <li>Screen-share video: {screenVideo ? `Published (${screenVideo.publication.trackSid})` : "Not published"}</li>
-        <li>Screen-share audio: {screenAudio ? `${screenAudio.publication.isMuted ? "Muted" : "Published"} (${screenAudio.publication.trackSid})` : screenVideo ? "No audio track provided by the browser" : "Not published"}</li>
-      </ul>
       {!participant.isLocal && (
         <>
           <label className="flex flex-wrap items-center gap-3">
@@ -155,7 +152,7 @@ function ParticipantRow({ participant, microphoneTracks, shareTracks }: {
             />
           </label>
           {microphoneTracks.filter((ref) => ref.publication.isSubscribed).map((trackRef) => (
-            <AudioTrack key={trackRef.publication.trackSid} trackRef={trackRef} volume={volume / 100} />
+            <AudioTrack key={trackRef.publication.trackSid} trackRef={trackRef} volume={deafened ? 0 : volume / 100} />
           ))}
         </>
       )}
@@ -175,6 +172,8 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [screenBusy, setScreenBusy] = useState(false);
   const [screenMessage, setScreenMessage] = useState("");
+  const [deafened, setDeafened] = useState(false);
+  const microphoneBeforeDeafen = useRef(false);
   const screenPending = useRef(false);
 
   useEffect(() => {
@@ -239,16 +238,35 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
     }
   }
 
-  async function toggleMicrophone() {
+  async function setMicrophone(enabled: boolean) {
     setBusy(true);
     setError("");
     try {
-      await room.localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
+      await room.localParticipant.setMicrophoneEnabled(enabled);
+      return true;
     } catch {
       setError("Could not change the microphone. Check your browser permissions and audio device.");
+      return false;
     } finally {
       setBusy(false);
     }
+  }
+
+  async function toggleMicrophone() {
+    // Like Discord: unmuting while deafened also restores incoming audio.
+    if (await setMicrophone(!isMicrophoneEnabled) && !isMicrophoneEnabled) setDeafened(false);
+  }
+
+  async function toggleDeafen() {
+    if (deafened) {
+      setDeafened(false);
+      if (microphoneBeforeDeafen.current) await setMicrophone(true);
+      return;
+    }
+    // Deafen silences all incoming audio and mutes the microphone; undeafen restores the previous mic state.
+    microphoneBeforeDeafen.current = isMicrophoneEnabled;
+    setDeafened(true);
+    if (isMicrophoneEnabled) await setMicrophone(false);
   }
 
   return (
@@ -262,19 +280,25 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
             participant={participant}
             microphoneTracks={microphoneTracks.filter((trackRef) => trackRef.participant.identity === participant.identity)}
             shareTracks={shareTracks.filter((trackRef) => trackRef.participant.identity === participant.identity)}
+            deafened={deafened}
           />
         ))}
       </ul>
       <p className="muted text-sm">Volume controls affect only what you hear in this browser.</p>
       <AudioDeviceControls room={room} />
-      <div className="card sticky bottom-3 z-10 flex flex-wrap gap-3 shadow-lg">
-        <button className={isMicrophoneEnabled ? undefined : "btn-danger"} disabled={busy || connection !== ConnectionState.Connected} onClick={toggleMicrophone}>
-          {isMicrophoneEnabled ? "Mute microphone" : "Unmute microphone"}
+      <div className="card control-bar sticky bottom-3 z-10 shadow-lg" role="toolbar" aria-label="Call controls">
+        <button className={`icon-btn ${isMicrophoneEnabled ? "" : "icon-btn-off"}`} aria-label={isMicrophoneEnabled ? "Mute" : "Unmute"} data-tooltip={isMicrophoneEnabled ? "Mute" : "Unmute"} disabled={busy || connection !== ConnectionState.Connected} onClick={() => void toggleMicrophone()}>
+          {isMicrophoneEnabled ? <Mic size={22} aria-hidden="true" /> : <MicOff size={22} aria-hidden="true" />}
         </button>
-        <button className={isScreenShareEnabled ? undefined : "btn-primary"} disabled={screenBusy || connection !== ConnectionState.Connected} onClick={() => void toggleScreenShare()}>
-          {screenBusy ? "Please wait…" : isScreenShareEnabled ? "Stop sharing" : "Share screen"}
+        <button className={`icon-btn ${deafened ? "icon-btn-off" : ""}`} aria-label={deafened ? "Undeafen" : "Deafen"} data-tooltip={deafened ? "Undeafen" : "Deafen"} disabled={busy || connection !== ConnectionState.Connected} onClick={() => void toggleDeafen()}>
+          {deafened ? <HeadphoneOff size={22} aria-hidden="true" /> : <Headphones size={22} aria-hidden="true" />}
         </button>
-        <button className="btn-danger sm:ml-auto" onClick={() => void leave()}>Leave call</button>
+        <button className={`icon-btn ${isScreenShareEnabled ? "icon-btn-on" : ""}`} aria-label={screenBusy ? "Please wait" : isScreenShareEnabled ? "Stop sharing" : "Share screen"} data-tooltip={screenBusy ? "Please wait…" : isScreenShareEnabled ? "Stop sharing" : "Share screen"} disabled={screenBusy || connection !== ConnectionState.Connected} onClick={() => void toggleScreenShare()}>
+          {isScreenShareEnabled ? <MonitorOff size={22} aria-hidden="true" /> : <MonitorUp size={22} aria-hidden="true" />}
+        </button>
+        <button className="icon-btn btn-danger" aria-label="Leave call" data-tooltip="Leave call" onClick={() => void leave()}>
+          <LogOut size={22} aria-hidden="true" />
+        </button>
       </div>
       <p className="muted text-sm">To share audio, enable the audio checkbox in Chrome&apos;s screen picker when available.</p>
       {screenMessage && <p role="status">{screenMessage}</p>}
@@ -300,6 +324,7 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
             video={trackRef}
             audio={shareTracks.find((ref) => ref.participant.identity === trackRef.participant.identity && ref.source === Track.Source.ScreenShareAudio)}
             connected={connection === ConnectionState.Connected}
+            deafened={deafened}
             room={room}
           />
         ))}
@@ -316,11 +341,11 @@ function CallEnvironment({ active }: { active: boolean }) {
   const [status, setStatus] = useState<CallEnvironmentStatus>();
   useEffect(() => observeCallEnvironment(active, setStatus), [active]);
   return (
-    <aside className="card muted text-xs" aria-label="Browser debug status">
+    <div className="muted space-y-1">
       <p>Page: {status?.visibility ?? "checking"} · Hidden transitions: {status?.hiddenCount ?? 0}</p>
       <p>Wake lock: {status?.wakeLock ?? "checking"}</p>
       {!active && <p>Connection: disconnected</p>}
-    </aside>
+    </div>
   );
 }
 
@@ -484,8 +509,13 @@ export default function Home() {
         </form>
       )}
       {error && <p role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-red-500">{error}</p>}
-      <CallEnvironment active={Boolean(room)} />
-      <CallDiagnostics room={room} />
+      <details className="card text-xs">
+        <summary className="cursor-pointer text-sm font-semibold">Details</summary>
+        <div className="mt-3 space-y-4">
+          <CallEnvironment active={Boolean(room)} />
+          <CallDiagnostics room={room} />
+        </div>
+      </details>
     </main>
   );
 }

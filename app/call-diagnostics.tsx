@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Room, RoomEvent, Track } from "livekit-client";
+import { Room, RoomEvent, Track, type TrackPublication } from "livekit-client";
 
 type Snapshot = ReturnType<typeof readSnapshot>;
 type ReconnectionEvent = { time: string; event: string };
+
+function trackState(publication?: TrackPublication) {
+  return publication ? `${publication.isMuted ? "muted" : "published"} · ${publication.trackSid}` : "not published";
+}
 
 export function readSnapshot(room?: Room) {
   const participants = room ? [room.localParticipant, ...room.remoteParticipants.values()] : [];
@@ -16,6 +20,7 @@ export function readSnapshot(room?: Room) {
       name: participant.name || participant.identity || "Local participant",
       local: participant.isLocal,
       quality: participant.connectionQuality,
+      microphone: trackState(participant.getTrackPublication(Track.Source.Microphone)),
     })),
     microphone: !microphone ? "not published" : `${microphone.isMuted ? "muted" : "enabled"} · ${microphone.track ? "track attached" : "no track attached"} · ${microphone.trackSid}`,
     shares: participants.flatMap((participant) => {
@@ -24,7 +29,7 @@ export function readSnapshot(room?: Room) {
       if (!video && !audio) return [];
       function state(publication: typeof video) {
         if (!publication) return "not published";
-        return `${publication.isMuted ? "muted" : "published"} · ${participant.isLocal ? "local" : publication.isSubscribed ? "subscribed" : "not subscribed"} · ${publication.track ? "track attached" : "no track attached"}`;
+        return `${publication.isMuted ? "muted" : "published"} · ${participant.isLocal ? "local" : publication.isSubscribed ? "subscribed" : "not subscribed"} · ${publication.track ? "track attached" : "no track attached"} · ${publication.trackSid}`;
       }
       return [{ identity: participant.identity, name: participant.name || participant.identity, video: state(video), audio: state(audio) }];
     }),
@@ -76,13 +81,13 @@ export default function CallDiagnostics({ room }: { room?: Room }) {
   }, [room]);
 
   return (
-    <details className="card text-xs">
-      <summary className="cursor-pointer text-sm font-semibold">Call diagnostics (local browser)</summary>
-      <div className="muted mt-2 space-y-2">
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold">Call diagnostics (local browser)</h3>
+      <div className="muted space-y-2">
         <p>Room: games-poc · Connection: {snapshot.connection}</p>
         <p>Participants: {snapshot.participants.length} (includes you)</p>
         <ul>{snapshot.participants.map((participant) => (
-          <li key={participant.identity}>{participant.name}{participant.local ? " (you)" : ""} · Quality: {participant.quality}</li>
+          <li key={participant.identity}>{participant.name}{participant.local ? " (you)" : ""} · Quality: {participant.quality} · Microphone: {participant.microphone}</li>
         ))}</ul>
         <p>Local microphone: {snapshot.microphone}</p>
         {snapshot.shares.length === 0 ? <p>Screen publishers: none</p> : snapshot.shares.map((share) => (
@@ -97,6 +102,6 @@ export default function CallDiagnostics({ room }: { room?: Room }) {
         <p className="break-all">Browser-reported user agent: {browser}</p>
         <p className="opacity-70">Quality is the SDK estimate, not a latency measurement. Published/attached tracks do not prove audible audio or moving video.</p>
       </div>
-    </details>
+    </div>
   );
 }
