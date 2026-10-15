@@ -54,30 +54,34 @@ function RemoteScreenShare({ video, audio, connected, deafened, room }: {
   return (
     <figure className="card space-y-3">
       <figcaption><strong>{video.participant.name || video.participant.identity}</strong> is sharing their screen</figcaption>
-      <button className={watching ? undefined : "btn-primary"} disabled={!connected} onClick={() => {
-        if (!watching) void room.startAudio().catch(() => {});
-        setFullscreenMessage("");
-        setWatching(!watching);
-      }}>
-        {watching ? "Stop watching" : "Watch"}
-      </button>
+      <div className="flex flex-wrap items-center gap-3">
+        {watching && videoPublication.isSubscribed && (
+          <button onClick={async () => {
+            setFullscreenMessage("");
+            try {
+              if (!videoElement.current) return;
+              await enterVideoFullscreen(videoElement.current);
+            } catch (cause) {
+              setFullscreenMessage(cause instanceof Error ? cause.message : "Fullscreen could not start. Continue watching inline.");
+            }
+          }}>Fullscreen</button>
+        )}
+        <button className={watching ? undefined : "btn-primary"} disabled={!connected} onClick={() => {
+          if (!watching) void room.startAudio().catch(() => {});
+          setFullscreenMessage("");
+          setWatching(!watching);
+        }}>
+          {watching ? "Stop watching" : "Watch"}
+        </button>
+      </div>
       {watching && (
         <>
           {videoPublication.isSubscribed ? (
             <>
               <VideoTrack ref={videoElement} trackRef={video} manageSubscription={false} className="screen-video" muted playsInline disablePictureInPicture />
-              <button onClick={async () => {
-                setFullscreenMessage("");
-                try {
-                  if (!videoElement.current) return;
-                  await enterVideoFullscreen(videoElement.current);
-                } catch (cause) {
-                  setFullscreenMessage(cause instanceof Error ? cause.message : "Fullscreen could not start. Continue watching inline.");
-                }
-              }}>Fullscreen</button>
-              {fullscreenMessage && <p role="status" className="text-sm">{fullscreenMessage}</p>}
+              {fullscreenMessage && <p role="status" className="notice">{fullscreenMessage}</p>}
             </>
-          ) : <p>Waiting for screen video subscription…</p>}
+          ) : <p className="muted text-sm">Waiting for screen video subscription…</p>}
           {audio && audioPublication?.isSubscribed && (
             <ScreenAudioControl key={audioPublication.trackSid} trackRef={audio} deafened={deafened} />
           )}
@@ -271,8 +275,10 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
 
   return (
     <section className="space-y-5">
-      <p role="status"><span className={`badge ${connection === ConnectionState.Connected ? "badge-live" : ""}`}>Connection: {connection}</span></p>
-      <h2 className="text-lg font-semibold">Connected participants ({participants.length})</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="section-title">Participants ({participants.length})</h2>
+        <p role="status"><span className={`badge ${connection === ConnectionState.Connected ? "badge-live" : ""}`}>Connection: {connection}</span></p>
+      </div>
       <ul className="grid gap-3 sm:grid-cols-2">
         {participants.map((participant) => (
           <ParticipantRow
@@ -301,16 +307,15 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
         </button>
       </div>
       <p className="muted text-sm">To share audio, enable the audio checkbox in Chrome&apos;s screen picker when available.</p>
-      {screenMessage && <p role="status">{screenMessage}</p>}
-      {error && <p role="alert" className="text-red-600">{error}</p>}
+      {screenMessage && <p role="status" className="notice">{screenMessage}</p>}
+      {error && <p role="alert" className="alert">{error}</p>}
       <section className="space-y-3" aria-label="Shared screens">
-        <h2 className="text-lg font-semibold">Shared screens</h2>
+        <h2 className="section-title">Shared screens</h2>
         {screenTracks.length === 0 && <p className="card muted">No one is sharing a screen.</p>}
         {screenTracks.map((trackRef) => (
           trackRef.participant.isLocal ? <figure key={trackRef.publication.trackSid} className="card space-y-3">
             <figcaption>
-              <strong>{trackRef.participant.name || trackRef.participant.identity}</strong>
-              {trackRef.participant.isLocal ? " (you)" : ""} is sharing
+              <strong>{trackRef.participant.name || trackRef.participant.identity}</strong> (you) is sharing
             </figcaption>
             <VideoTrack
               trackRef={trackRef}
@@ -478,22 +483,22 @@ export default function Home() {
       {room ? (
         <RoomContext.Provider value={room}><Call room={room} leave={leave} /></RoomContext.Provider>
       ) : !allowedEmail ? (
-        <form onSubmit={checkAccess} className="card space-y-4">
+        <form onSubmit={checkAccess} className="card space-y-4 sm:p-6">
           <label className="block space-y-2">
-            <span>Email address</span>
-            <input className="block w-full rounded border px-3 py-2" type="email" autoComplete="email" inputMode="email" required maxLength={254} value={email} disabled={checkingEmail} onChange={(event) => setEmail(event.target.value)} />
+            <span className="field-label">Email address</span>
+            <input className="block w-full border px-3 py-2" type="email" autoComplete="email" inputMode="email" required maxLength={254} value={email} disabled={checkingEmail} onChange={(event) => setEmail(event.target.value)} />
           </label>
           <button className="btn-primary" type="submit" disabled={checkingEmail || !email.trim()}>{checkingEmail ? "Checking…" : "Continue"}</button>
         </form>
       ) : (
-        <form onSubmit={join} className="card space-y-4">
+        <form onSubmit={join} className="card space-y-5 sm:p-6">
           <p className="muted text-sm">Email: {allowedEmail}</p>
           <label className="block space-y-2">
-            <span>Participant name</span>
-            <input className="block w-full rounded border px-3 py-2" required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} disabled={joining} autoComplete="nickname" />
+            <span className="field-label">Participant name</span>
+            <input className="block w-full border px-3 py-2" required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} disabled={joining} autoComplete="nickname" />
           </label>
           <fieldset className="space-y-2" disabled={joining}>
-            <legend className="mb-2">Avatar</legend>
+            <legend className="field-label mb-2">Avatar</legend>
             <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
               {AVATAR_IDS.map((id) => (
                 <label key={id} className="avatar-option" title={avatarPixels(id).label}>
@@ -503,12 +508,14 @@ export default function Home() {
               ))}
             </div>
           </fieldset>
-          <button className="btn-primary" disabled={joining || !name.trim()} type="submit">{joining ? "Joining…" : "Join call"}</button>
-          <button className="ml-3" type="button" disabled={joining} onClick={() => { setAllowedEmail(""); setError(""); }}>Change email</button>
+          <div className="flex flex-wrap gap-3">
+            <button className="btn-primary" disabled={joining || !name.trim()} type="submit">{joining ? "Joining…" : "Join call"}</button>
+            <button type="button" disabled={joining} onClick={() => { setAllowedEmail(""); setError(""); }}>Change email</button>
+          </div>
           <p className="muted text-sm" role="status">{joining ? "Requesting microphone access and connecting…" : "Disconnected"}</p>
         </form>
       )}
-      {error && <p role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-red-500">{error}</p>}
+      {error && <p role="alert" className="alert">{error}</p>}
       <details className="card text-xs">
         <summary className="cursor-pointer text-sm font-semibold">Details</summary>
         <div className="mt-3 space-y-4">
