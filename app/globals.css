@@ -378,3 +378,88 @@ details > summary:hover {
     transform: none;
   }
 }
+
+/* App shell: compact channel rail on desktop, bottom tab bar on phones. */
+.app-shell {
+  display: flex;
+  min-height: 100dvh;
+}
+
+.channel-nav {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 20;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.channel-nav-title {
+  display: none;
+}
+
+button.channel-link {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 52px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+button.channel-link[aria-current="page"] {
+  background: var(--surface-muted);
+  color: var(--foreground);
+}
+
+button.channel-link[aria-current="page"] svg {
+  color: var(--accent);
+}
+
+.channel-badge {
+  display: none;
+}
+
+/* Keep the call controls above the phone tab bar. */
+.control-bar {
+  bottom: calc(4.75rem + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 640px) {
+  .channel-nav {
+    position: sticky;
+    top: 0;
+    flex: none;
+    flex-direction: column;
+    width: 14rem;
+    height: 100dvh;
+    padding: 1.5rem 0.75rem;
+    border-top: 0;
+    border-right: 1px solid var(--border);
+  }
+
+  .channel-nav-title {
+    display: block;
+    padding: 0 0.75rem 0.25rem;
+  }
+
+  button.channel-link {
+    flex: none;
+    justify-content: flex-start;
+    min-height: 44px;
+  }
+
+  .channel-badge {
+    display: inline-flex;
+    margin-left: auto;
+  }
+
+  .control-bar {
+    bottom: 0.75rem;
+  }
+}

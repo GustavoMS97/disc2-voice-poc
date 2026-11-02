@@ -4,12 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { AudioTrack, VideoTrack, RoomContext, useConnectionState, useIsSpeaking, useLocalParticipant, useParticipantAttribute, useParticipants, useTracks, type TrackReference } from "@livekit/components-react";
 import { enterVideoFullscreen, observeCallEnvironment, type CallEnvironmentStatus } from "./lib/call-environment";
 import { AVATAR_IDS, DEFAULT_AVATAR, avatarPixels, isAvatarId } from "./lib/avatars";
-import { HeadphoneOff, Headphones, LogOut, Mic, MicOff, Monitor, MonitorOff, MonitorUp } from "lucide-react";
+import { Hash, HeadphoneOff, Headphones, LogOut, Mic, MicOff, Monitor, MonitorOff, MonitorUp, Volume2 } from "lucide-react";
 import CallDiagnostics from "./call-diagnostics";
 import PixelAvatar from "./pixel-avatar";
 import AudioDeviceControls from "./audio-device-controls";
 import { createAudioRoom, closeAudioDeviceContext } from "./lib/audio-devices";
-import { ConnectionState, ParticipantEvent, RemoteTrackPublication, Room, RoomEvent, ScreenSharePresets, Track, createLocalAudioTrack, type LocalAudioTrack, type LocalTrackPublication, type Participant } from "livekit-client";
+import { ConnectionState, DisconnectReason, ParticipantEvent, RemoteTrackPublication, Room, RoomEvent, ScreenSharePresets, Track, createLocalAudioTrack, type LocalAudioTrack, type LocalTrackPublication, type Participant } from "livekit-client";
 
 function subscribeMicrophones(room: Room) {
   function subscribe(publication: RemoteTrackPublication) {
@@ -164,7 +164,8 @@ function ParticipantRow({ participant, microphoneTracks, shareTracks, deafened }
   );
 }
 
-function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
+// Stays mounted while in a call so audio keeps playing when another channel is shown.
+function Call({ room, leave, hidden }: { room: Room; leave: () => Promise<void>; hidden: boolean }) {
   const connection = useConnectionState();
   const participants = useParticipants();
   const microphoneTracks = useTracks([Track.Source.Microphone], { onlySubscribed: false });
@@ -275,6 +276,7 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
 
   return (
     <section className="space-y-5">
+      <div hidden={hidden} className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="section-title">Participants ({participants.length})</h2>
         <p role="status"><span className={`badge ${connection === ConnectionState.Connected ? "badge-live" : ""}`}>Connection: {connection}</span></p>
@@ -292,7 +294,8 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
       </ul>
       <p className="muted text-sm">Volume controls affect only what you hear in this browser.</p>
       <AudioDeviceControls room={room} />
-      <div className="card control-bar sticky bottom-3 z-10 shadow-lg" role="toolbar" aria-label="Call controls">
+      </div>
+      <div className="card control-bar sticky z-10 shadow-lg" role="toolbar" aria-label="Call controls">
         <button className={`icon-btn ${isMicrophoneEnabled ? "" : "icon-btn-off"}`} aria-label={isMicrophoneEnabled ? "Mute" : "Unmute"} data-tooltip={isMicrophoneEnabled ? "Mute" : "Unmute"} disabled={busy || connection !== ConnectionState.Connected} onClick={() => void toggleMicrophone()}>
           {isMicrophoneEnabled ? <Mic size={22} aria-hidden="true" /> : <MicOff size={22} aria-hidden="true" />}
         </button>
@@ -306,6 +309,7 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
           <LogOut size={22} aria-hidden="true" />
         </button>
       </div>
+      <div hidden={hidden} className="space-y-5">
       <p className="muted text-sm">To share audio, enable the audio checkbox in Chrome&apos;s screen picker when available.</p>
       {screenMessage && <p role="status" className="notice">{screenMessage}</p>}
       {error && <p role="alert" className="alert">{error}</p>}
@@ -338,6 +342,7 @@ function Call({ room, leave }: { room: Room; leave: () => Promise<void> }) {
         try { await Promise.all([room.startAudio(), room.startVideo()]); setError(""); }
         catch { setError("Playback could not resume. Tap again and check the device audio output."); }
       }}>Enable / resume call playback</button>
+      </div>
     </section>
   );
 }
@@ -363,6 +368,7 @@ export default function Home() {
   const [room, setRoom] = useState<Room>();
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState("");
+  const [view, setView] = useState<"chat" | "games">("games");
   const activeRoom = useRef<Room | null>(null);
   const pending = useRef(false);
 
@@ -418,11 +424,14 @@ export default function Home() {
       // Capture only audio and request microphone permission before connecting.
       microphone = await createLocalAudioTrack();
       if (activeRoom.current !== nextRoom) { microphone.stop(); await nextRoom.disconnect(); return; }
-      nextRoom.on(RoomEvent.Disconnected, () => {
+      nextRoom.on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
         if (activeRoom.current === nextRoom) {
           activeRoom.current = null;
           setRoom(undefined);
-          setError("The call disconnected. You can join again.");
+          // Never rejoin automatically: the newer device or tab owns the call now.
+          setError(reason === DisconnectReason.DUPLICATE_IDENTITY
+            ? "You joined the call from another device or tab, so this one left. Join again here to move the call back."
+            : "The call disconnected. You can join again.");
         }
       });
       await nextRoom.connect(data.serverUrl, data.token, { autoSubscribe: false });
@@ -455,74 +464,97 @@ export default function Home() {
     if (current) closeAudioDeviceContext(current);
   }
 
+  const inCall = Boolean(room);
+
   return (
-    <main className="mx-auto w-full min-w-0 max-w-3xl space-y-6 px-4 py-8 sm:px-6 sm:py-12">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="brand-mark" aria-hidden="true">
-            <svg width="22" height="28" viewBox="0 0 24 30" fill="var(--accent)">
-              <rect x="9" y="0" width="6" height="4" rx="2" />
-              <rect x="1" y="6" width="5" height="4" rx="2" />
-              <rect x="18" y="6" width="5" height="4" rx="2" />
-              <rect x="8" y="5" width="8" height="6" rx="2.5" />
-              <rect x="1" y="12" width="5" height="10" rx="2.5" />
-              <rect x="18" y="12" width="5" height="10" rx="2.5" />
-              <rect x="8" y="12" width="8" height="9" rx="2.5" />
-              <rect x="3" y="24" width="4" height="3" rx="1.5" />
-              <rect x="17" y="24" width="4" height="3" rx="1.5" />
-              <rect x="8" y="22" width="8" height="8" rx="2.5" />
-            </svg>
-          </span>
-          <div>
-            <h1 className="brand-word text-3xl">Sabu<span className="brand-dot">.</span>Go</h1>
-            <p className="muted text-sm">LiveKit voice call</p>
-          </div>
-        </div>
-        <p className="badge">Room: <strong className="ml-1">games-poc</strong></p>
-      </header>
-      {room ? (
-        <RoomContext.Provider value={room}><Call room={room} leave={leave} /></RoomContext.Provider>
-      ) : !allowedEmail ? (
-        <form onSubmit={checkAccess} className="card space-y-4 sm:p-6">
-          <label className="block space-y-2">
-            <span className="field-label">Email address</span>
-            <input className="block w-full border px-3 py-2" type="email" autoComplete="email" inputMode="email" required maxLength={254} value={email} disabled={checkingEmail} onChange={(event) => setEmail(event.target.value)} />
-          </label>
-          <button className="btn-primary" type="submit" disabled={checkingEmail || !email.trim()}>{checkingEmail ? "Checking…" : "Continue"}</button>
-        </form>
-      ) : (
-        <form onSubmit={join} className="card space-y-5 sm:p-6">
-          <p className="muted text-sm">Email: {allowedEmail}</p>
-          <label className="block space-y-2">
-            <span className="field-label">Participant name</span>
-            <input className="block w-full border px-3 py-2" required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} disabled={joining} autoComplete="nickname" />
-          </label>
-          <fieldset className="space-y-2" disabled={joining}>
-            <legend className="field-label mb-2">Avatar</legend>
-            <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
-              {AVATAR_IDS.map((id) => (
-                <label key={id} className="avatar-option" title={avatarPixels(id).label}>
-                  <input className="sr-only" type="radio" name="avatar" value={id} checked={avatar === id} onChange={() => setAvatar(id)} aria-label={avatarPixels(id).label} />
-                  <PixelAvatar id={id} size={48} />
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          <div className="flex flex-wrap gap-3">
-            <button className="btn-primary" disabled={joining || !name.trim()} type="submit">{joining ? "Joining…" : "Join call"}</button>
-            <button type="button" disabled={joining} onClick={() => { setAllowedEmail(""); setError(""); }}>Change email</button>
-          </div>
-          <p className="muted text-sm" role="status">{joining ? "Requesting microphone access and connecting…" : "Disconnected"}</p>
-        </form>
+    <div className="app-shell">
+      {allowedEmail && (
+        <nav className="channel-nav" aria-label="Channels">
+          <p className="section-title channel-nav-title">Channels</p>
+          <button className="channel-link" aria-current={view === "chat" ? "page" : undefined} onClick={() => setView("chat")}>
+            <Hash size={20} aria-hidden="true" /><span>chat-geral</span>
+          </button>
+          <button className="channel-link" aria-current={view === "games" ? "page" : undefined} onClick={() => setView("games")}>
+            <Volume2 size={20} aria-hidden="true" /><span>games</span>
+            {inCall && <span className="badge badge-live channel-badge">In call</span>}
+          </button>
+        </nav>
       )}
-      {error && <p role="alert" className="alert">{error}</p>}
-      <details className="card text-xs">
-        <summary className="cursor-pointer text-sm font-semibold">Details</summary>
-        <div className="mt-3 space-y-4">
-          <CallEnvironment active={Boolean(room)} />
-          <CallDiagnostics room={room} />
-        </div>
-      </details>
-    </main>
+      <main className="mx-auto w-full min-w-0 max-w-3xl space-y-6 px-4 pt-8 pb-28 sm:px-6 sm:pb-12 sm:py-12">
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="brand-mark" aria-hidden="true">
+              <svg width="22" height="28" viewBox="0 0 24 30" fill="var(--accent)">
+                <rect x="9" y="0" width="6" height="4" rx="2" />
+                <rect x="1" y="6" width="5" height="4" rx="2" />
+                <rect x="18" y="6" width="5" height="4" rx="2" />
+                <rect x="8" y="5" width="8" height="6" rx="2.5" />
+                <rect x="1" y="12" width="5" height="10" rx="2.5" />
+                <rect x="18" y="12" width="5" height="10" rx="2.5" />
+                <rect x="8" y="12" width="8" height="9" rx="2.5" />
+                <rect x="3" y="24" width="4" height="3" rx="1.5" />
+                <rect x="17" y="24" width="4" height="3" rx="1.5" />
+                <rect x="8" y="22" width="8" height="8" rx="2.5" />
+              </svg>
+            </span>
+            <div>
+              <h1 className="brand-word text-3xl">Sabu<span className="brand-dot">.</span>Go</h1>
+              <p className="muted text-sm">LiveKit voice call</p>
+            </div>
+          </div>
+          <p className="badge">Room: <strong className="ml-1">games-poc</strong></p>
+        </header>
+        {allowedEmail && view === "chat" && (
+          <section className="card space-y-2" aria-labelledby="chat-title">
+            <h2 id="chat-title" className="flex items-center gap-2 font-semibold"><Hash size={18} aria-hidden="true" />chat-geral</h2>
+            <p className="muted text-sm">Text chat arrives in the next step. Messages will be temporary and not saved.</p>
+            {inCall && <p className="muted text-sm">You are still in the games call; the controls below keep working.</p>}
+          </section>
+        )}
+        {room ? (
+          <RoomContext.Provider value={room}><Call room={room} leave={leave} hidden={view !== "games"} /></RoomContext.Provider>
+        ) : !allowedEmail ? (
+          <form onSubmit={checkAccess} className="card space-y-4 sm:p-6">
+            <label className="block space-y-2">
+              <span className="field-label">Email address</span>
+              <input className="block w-full border px-3 py-2" type="email" autoComplete="email" inputMode="email" required maxLength={254} value={email} disabled={checkingEmail} onChange={(event) => setEmail(event.target.value)} />
+            </label>
+            <button className="btn-primary" type="submit" disabled={checkingEmail || !email.trim()}>{checkingEmail ? "Checking…" : "Continue"}</button>
+          </form>
+        ) : view === "games" && (
+          <form onSubmit={join} className="card space-y-5 sm:p-6">
+            <p className="muted text-sm">Email: {allowedEmail}</p>
+            <label className="block space-y-2">
+              <span className="field-label">Participant name</span>
+              <input className="block w-full border px-3 py-2" required maxLength={80} value={name} onChange={(event) => setName(event.target.value)} disabled={joining} autoComplete="nickname" />
+            </label>
+            <fieldset className="space-y-2" disabled={joining}>
+              <legend className="field-label mb-2">Avatar</legend>
+              <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+                {AVATAR_IDS.map((id) => (
+                  <label key={id} className="avatar-option" title={avatarPixels(id).label}>
+                    <input className="sr-only" type="radio" name="avatar" value={id} checked={avatar === id} onChange={() => setAvatar(id)} aria-label={avatarPixels(id).label} />
+                    <PixelAvatar id={id} size={48} />
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <div className="flex flex-wrap gap-3">
+              <button className="btn-primary" disabled={joining || !name.trim()} type="submit">{joining ? "Joining…" : "Join call"}</button>
+              <button type="button" disabled={joining} onClick={() => { setAllowedEmail(""); setError(""); }}>Change email</button>
+            </div>
+            <p className="muted text-sm" role="status">{joining ? "Requesting microphone access and connecting…" : "Disconnected"}</p>
+          </form>
+        )}
+        {error && <p role="alert" className="alert">{error}</p>}
+        <details className="card text-xs">
+          <summary className="cursor-pointer text-sm font-semibold">Details</summary>
+          <div className="mt-3 space-y-4">
+            <CallEnvironment active={Boolean(room)} />
+            <CallDiagnostics room={room} />
+          </div>
+        </details>
+      </main>
+    </div>
   );
 }

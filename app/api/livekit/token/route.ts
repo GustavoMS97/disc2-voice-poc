@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { AccessToken, TrackSource } from "livekit-server-sdk";
 import { checkEmailAccess } from "@/app/lib/email-allowlist";
 import { DEFAULT_AVATAR, isAvatarId } from "@/app/lib/avatars";
@@ -32,8 +32,11 @@ export async function POST(request: Request) {
   }
 
   try {
+    // Stable per email so a new join replaces the old connection (LiveKit DUPLICATE_IDENTITY),
+    // keyed with the server secret so the email cannot be read or guessed from the identity.
+    const identity = `u_${createHmac("sha256", apiSecret).update(String(email).trim().toLowerCase()).digest("hex").slice(0, 32)}`;
     const token = new AccessToken(apiKey, apiSecret, {
-      identity: randomUUID(), name: name.trim(), ttl: "10m", attributes: { avatar },
+      identity, name: name.trim(), ttl: "10m", attributes: { avatar },
     });
     token.addGrant({
       roomJoin: true, room: "games-poc", canSubscribe: true,

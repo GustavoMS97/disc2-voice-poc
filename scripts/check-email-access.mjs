@@ -49,6 +49,11 @@ try {
   assert.deepEqual(claims.video.canPublishSources, ["microphone", "screen_share", "screen_share_audio"]);
   assert.equal(JSON.stringify(claims).includes("example.com"), false);
   assert.deepEqual(claims.attributes, { avatar: "1" }, "Missing avatar falls back to the default");
+  const verify = async (body) => new TokenVerifier(process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET).verify((await (await token.POST(request(body))).json()).token);
+  const again = await verify({ name: "Alice 2", email: "alice@EXAMPLE.com" });
+  assert.match(claims.sub, /^u_[0-9a-f]{32}$/);
+  assert.equal(again.sub, claims.sub, "Same email always gets the same identity, so a new join replaces the old one");
+  assert.notEqual((await verify({ name: "Bob", email: "bob@example.com" })).sub, claims.sub, "Different emails get different identities");
   const chosen = await token.POST(request({ name: "Alice", email: "alice@example.com", avatar: "8" }));
   const chosenClaims = await new TokenVerifier(process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET).verify((await chosen.json()).token);
   assert.deepEqual(chosenClaims.attributes, { avatar: "8" });
@@ -60,7 +65,7 @@ try {
   assert.equal((await token.POST(request({ name: "Alice", email: "alice@example.com" }))).status, 503);
   delete process.env.ALLOWED_EMAILS;
   assert.equal((await access.POST(request({ email: "alice@example.com" }))).status, 503);
-  console.log("PASS: exact/case-insensitive allowlist, fail-closed configuration, server-side token enforcement, unchanged media grants, no email in token, validated avatar attribute.");
+  console.log("PASS: exact/case-insensitive allowlist, fail-closed configuration, server-side token enforcement, unchanged media grants, no email in token, stable per-email identity, validated avatar attribute.");
 } finally {
   keys.forEach((key, index) => {
     if (previous[index] === undefined) delete process.env[key];
